@@ -1,0 +1,6 @@
+{
+  "name": "BioLink Pro",
+  "description": "Una piattaforma all-in-one per creatori e team per creare, gestire e monetizzare link in bio con design minimalista, e-commerce integrato e analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
