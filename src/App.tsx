@@ -322,10 +322,14 @@ function AdminView({ onBack }: { onBack: () => void }) {
       type: newBannerType,
       position: newBannerPosition,
       active: true,
-      imageUrl: newBannerType === 'image' ? newBannerImageUrl : undefined,
-      linkUrl: newBannerType === 'image' ? newBannerLinkUrl : undefined,
-      code: newBannerType === 'code' ? newBannerCode : undefined
     };
+
+    if (newBannerType === 'image') {
+      banner.imageUrl = newBannerImageUrl;
+      banner.linkUrl = newBannerLinkUrl;
+    } else {
+      banner.code = newBannerCode;
+    }
 
     await saveBanner(banner);
     setAllBanners([...allBanners, banner]);
