@@ -152,6 +152,7 @@ function DashboardView({ pages, onEdit, onCreate, onDuplicate, onSignOut, isAdmi
   const [newSlug, setNewSlug] = useState('');
   const [duplicateTarget, setDuplicateTarget] = useState<BioPage | null>(null);
   const [duplicateSlug, setDuplicateSlug] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   
   const handleCreateSubmit = (e: React.FormEvent) => {
@@ -299,12 +300,23 @@ function DashboardView({ pages, onEdit, onCreate, onDuplicate, onSignOut, isAdmi
             <h1 className="text-3xl font-black italic uppercase tracking-tighter">I tuoi Bio Site</h1>
             <p className="text-gray-500 mt-2 font-medium">Gestisci le tue pagine e monitora le analytics.</p>
           </div>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-[#1A1A1A] text-white px-5 py-2 rounded-full text-xs font-bold uppercase tracking-widest hover:opacity-90"
-          >
-            + Nuova Pagina
-          </button>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="relative w-full sm:w-64">
+              <input
+                type="text"
+                placeholder="Cerca pagina o slug..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-4 pr-4 py-2 border-2 border-gray-200 rounded-full focus:border-black outline-none transition-colors"
+              />
+            </div>
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="bg-[#1A1A1A] text-white px-5 py-2 rounded-full text-xs font-bold uppercase tracking-widest hover:opacity-90 whitespace-nowrap"
+            >
+              + Nuova Pagina
+            </button>
+          </div>
         </div>
 
         {pages.length === 0 ? (
@@ -319,8 +331,16 @@ function DashboardView({ pages, onEdit, onCreate, onDuplicate, onSignOut, isAdmi
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {pages.map(page => (
+          <>
+            {pages.filter(page => page.profile.name.toLowerCase().includes(searchQuery.toLowerCase()) || page.slug.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
+              <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-3xl mt-4">
+                <p className="text-gray-500 font-bold mb-2">Nessun risultato per "{searchQuery}"</p>
+                <button onClick={() => setSearchQuery('')} className="text-xs uppercase tracking-widest underline">Azzera filtri</button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {pages.filter(page => page.profile.name.toLowerCase().includes(searchQuery.toLowerCase()) || page.slug.toLowerCase().includes(searchQuery.toLowerCase())).map(page => (
+
               <div key={page.id} className="bg-white p-6 rounded-2xl border-2 border-black shadow-sm hover:shadow-lg transition-all group relative flex flex-col">
                 <div className="flex justify-between items-start mb-6">
                   <div className="flex items-center gap-3">
@@ -341,6 +361,16 @@ function DashboardView({ pages, onEdit, onCreate, onDuplicate, onSignOut, isAdmi
                           <Copy className="w-3.5 h-3.5" />
                         </button>
                       </div>
+                      
+                      {page.socials && page.socials.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                          {page.socials.map((social, idx) => (
+                            <div key={idx} className="w-5 h-5 rounded-full bg-gray-100 border border-black/5 flex items-center justify-center text-gray-600" title={social.platform}>
+                              <SocialIcon platform={social.platform} className="w-2.5 h-2.5" />
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   
                   <div className="flex items-center gap-3">
@@ -376,7 +406,9 @@ function DashboardView({ pages, onEdit, onCreate, onDuplicate, onSignOut, isAdmi
                 </div>
               </div>
             ))}
-          </div>
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>

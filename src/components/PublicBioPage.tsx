@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
+import Markdown from 'react-markdown';
 import { BioPage, BioLink, SocialLink, BioModule, AppBanner } from '../types';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Instagram, Twitter, Youtube, Linkedin, Github, Facebook, Search, 
   ExternalLink, Coffee, Calendar, Download, Newspaper, SearchX, Mail, CheckCircle2
-} from 'lucide-react';
+, Folder } from 'lucide-react';
 import { subscribeToNewsletter, getAllBanners, trackLinkClick } from '../lib/db';
 
 const translations = {
@@ -160,13 +161,43 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
         <meta name="twitter:card" content="summary_large_image" />
       </Helmet>
     <div 
-      className={cn("min-h-screen w-full flex flex-col items-center py-12 px-4 relative", isPreview ? "h-full overflow-y-auto" : "")}
+      className={cn("min-h-screen w-full flex flex-col items-center py-12 px-4 relative z-0", isPreview ? "h-full overflow-y-auto" : "")}
       style={{ 
         backgroundColor: theme.backgroundColor, 
         color: theme.textColor,
         fontFamily: theme.fontFamily 
       }}
     >
+      {/* Background Layer */}
+      {theme.backgroundStyle && theme.backgroundStyle !== 'solid' && (
+        <div className="fixed inset-0 -z-10 pointer-events-none opacity-50" 
+          style={{
+            background: theme.backgroundStyle === 'gradient-animated' 
+              ? 'linear-gradient(45deg, rgba(255,255,255,0.1), rgba(0,0,0,0.1), rgba(255,255,255,0.1))'
+              : theme.backgroundStyle === 'mesh'
+              ? 'radial-gradient(at 40% 20%, rgba(255,255,255,0.1) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(0,0,0,0.1) 0px, transparent 50%), radial-gradient(at 0% 50%, rgba(255,255,255,0.1) 0px, transparent 50%)'
+              : theme.backgroundStyle === 'dots'
+              ? 'radial-gradient(rgba(0,0,0,0.2) 1px, transparent 1px)'
+              : theme.backgroundStyle === 'grid'
+              ? 'linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px)'
+              : theme.backgroundStyle === 'noise'
+              ? 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22 opacity=%220.3%22/%3E%3C/svg%3E")'
+              : theme.backgroundStyle === 'minimal-lines'
+              ? 'repeating-linear-gradient( 45deg, transparent, transparent 10px, rgba(0,0,0,0.05) 10px, rgba(0,0,0,0.05) 11px )'
+              : theme.backgroundStyle === 'stars'
+              ? 'radial-gradient(circle at center, rgba(255,255,255,0.8) 0, transparent 2px)'
+              : 'transparent',
+            backgroundSize: theme.backgroundStyle === 'dots' ? '20px 20px' 
+              : theme.backgroundStyle === 'grid' ? '40px 40px' 
+              : theme.backgroundStyle === 'stars' ? '100px 100px'
+              : theme.backgroundStyle === 'noise' ? '200px 200px'
+              : '400% 400%',
+            animation: theme.backgroundStyle === 'gradient-animated' ? 'gradient-shift 15s ease infinite'
+              : theme.backgroundStyle === 'stars' ? 'twinkle 4s ease-in-out infinite alternate'
+              : 'none'
+          }}
+        />
+      )}
       {/* Top Banners */}
       {!isPreview && topBanners.length > 0 && (
         <div className="w-full max-w-md flex flex-col gap-4 mb-8">
@@ -251,6 +282,111 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
             {filteredBlocks.map((block, idx) => {
               if (block._type === 'link') {
                 const link = block as BioLink;
+                
+                const roundedClass = theme.buttonRadius === 'full' ? 'rounded-[2rem]' : 
+                      theme.buttonRadius === 'lg' ? 'rounded-2xl' : 
+                      theme.buttonRadius === 'md' ? 'rounded-xl' : 
+                      theme.buttonRadius === 'sm' ? 'rounded-md' : 'rounded-none';
+
+                if (link.link_type === 'folder') {
+                  return (
+                    <motion.div
+                      key={link.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 + idx * 0.05 }}
+                      className="w-full"
+                    >
+                      <details className="group w-full bg-white border-2 border-black overflow-hidden" style={{ borderRadius: theme.buttonRadius === 'full' ? '1.5rem' : theme.buttonRadius === 'lg' ? '1rem' : theme.buttonRadius === 'md' ? '0.75rem' : theme.buttonRadius === 'sm' ? '0.375rem' : '0' }}>
+                        <summary className="flex items-center justify-between p-4 cursor-pointer list-none outline-none font-black uppercase tracking-widest text-xs hover:bg-black hover:text-white transition-colors">
+                          <span className="flex items-center gap-2">
+                            <Folder className="w-4 h-4" />
+                            {link.title || 'Cartella'}
+                          </span>
+                          <span className="transition group-open:rotate-180">
+                            <svg fill="none" height="24" shapeRendering="geometricPrecision" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" viewBox="0 0 24 24" width="24"><path d="M6 9l6 6 6-6"></path></svg>
+                          </span>
+                        </summary>
+                        <div className="p-4 bg-gray-50 border-t-2 border-black flex flex-col gap-3">
+                          {(link.children || []).map(child => (
+                            <a 
+                              key={child.id} 
+                              href={child.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={cn(
+                                "block w-full py-3 px-4 bg-white border-2 border-black text-center text-[10px] font-bold uppercase tracking-widest hover:bg-black hover:text-white transition-all hover:scale-[1.02]",
+                                roundedClass
+                              )}
+                            >
+                              {child.title || child.url}
+                            </a>
+                          ))}
+                          {(link.children || []).length === 0 && (
+                            <p className="text-center text-gray-400 text-xs py-2">Nessun link nella cartella</p>
+                          )}
+                        </div>
+                      </details>
+                    </motion.div>
+                  );
+                }
+
+                if (link.link_type === 'youtube' && link.url) {
+                  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+                  const match = link.url.match(regExp);
+                  const ytId = (match && match[2].length === 11) ? match[2] : null;
+                  if (ytId) {
+                    return (
+                      <motion.div
+                        key={link.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.1 + idx * 0.05 }}
+                        className={cn("w-full overflow-hidden border-2 border-black", roundedClass)}
+                      >
+                        <iframe 
+                          className="w-full aspect-video" 
+                          src={`https://www.youtube.com/embed/${ytId}`} 
+                          title={link.title} 
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                          allowFullScreen
+                        ></iframe>
+                        {link.title && <div className="p-3 bg-white text-black font-bold text-xs uppercase tracking-widest text-center border-t-2 border-black">{link.title}</div>}
+                      </motion.div>
+                    );
+                  }
+                }
+                
+                if (link.link_type === 'spotify' && link.url) {
+                  const regExp = /spotify.com\/(track|album|playlist|episode|show)\/([a-zA-Z0-9]+)/;
+                  const match = link.url.match(regExp);
+                  if (match) {
+                    const type = match[1];
+                    const id = match[2];
+                    return (
+                      <motion.div
+                        key={link.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.1 + idx * 0.05 }}
+                        className={cn("w-full overflow-hidden", roundedClass)}
+                      >
+                        <iframe 
+                          src={`https://open.spotify.com/embed/${type}/${id}?utm_source=generator`} 
+                          width="100%" 
+                          height="152" 
+                          frameBorder="0" 
+                          allowFullScreen={false} 
+                          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
+                          loading="lazy"
+                        ></iframe>
+                      </motion.div>
+                    );
+                  }
+                }
+
+                const isAmazon = link.link_type === 'amazon';
+
                 return (
                   <motion.a
                     key={link.id}
@@ -262,29 +398,30 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
                     transition={{ delay: 0.1 + idx * 0.05 }}
                     className={cn(
                       "block w-full transition-all cursor-pointer overflow-hidden relative",
-                      theme.buttonRadius === 'full' ? 'rounded-[2rem]' : 
-                      theme.buttonRadius === 'lg' ? 'rounded-2xl' : 
-                      theme.buttonRadius === 'md' ? 'rounded-xl' : 
-                      theme.buttonRadius === 'sm' ? 'rounded-md' : 'rounded-none',
+                      roundedClass,
                       "border-2 border-black hover:scale-[1.02]",
-                      (link.description || link.image) ? "p-0 text-left" : "py-4 px-6 text-center text-xs font-black uppercase tracking-widest hover:bg-black hover:text-white"
+                      (link.description || link.image || isAmazon) ? "p-0 text-left bg-white" : "py-4 px-6 text-center text-xs font-black uppercase tracking-widest hover:bg-black hover:text-white"
                     )}
-                    style={{ 
+                    style={(link.description || link.image || isAmazon) ? {} : { 
                       backgroundColor: theme.buttonColor !== 'transparent' ? theme.buttonColor : undefined, 
                       color: theme.buttonTextColor 
                     }}
                   >
-                    {(link.description || link.image) ? (
+                    {(link.description || link.image || isAmazon) ? (
                       <div className="flex items-center">
                         {link.image && (
-                          <div className="w-24 h-24 sm:w-28 sm:h-28 flex-shrink-0 border-r-2 border-black">
-                            <img src={link.image} alt="" className="w-full h-full object-cover" />
+                          <div className={cn("flex-shrink-0 border-r-2 border-black", isAmazon ? "w-28 h-28 sm:w-32 sm:h-32 p-2 bg-white" : "w-24 h-24 sm:w-28 sm:h-28")}>
+                            <img src={link.image} alt="" className={cn("w-full h-full", isAmazon ? "object-contain" : "object-cover")} />
                           </div>
                         )}
                         <div className="p-4 flex-1">
-                          <h3 className="text-xs font-black uppercase tracking-widest">{link.title}</h3>
+                          {isAmazon && <div className="text-[9px] font-black uppercase tracking-widest text-[#FF9900] mb-1">Amazon Picks</div>}
+                          <h3 className="text-xs font-black uppercase tracking-widest text-black">{link.title}</h3>
                           {link.description && (
-                            <p className="text-[10px] opacity-80 mt-1 line-clamp-2">{link.description}</p>
+                            <p className="text-[10px] text-gray-600 mt-1 line-clamp-2">{link.description}</p>
+                          )}
+                          {isAmazon && link.price && (
+                            <div className="mt-2 text-sm font-black text-black">{link.price}</div>
                           )}
                         </div>
                       </div>
@@ -333,12 +470,24 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
                       </div>
                     )}
                     {module.type === 'microblog' && (
-                      <div className="space-y-2 text-left">
-                        <h5 className="text-[10px] font-bold mb-1">{module.title}</h5>
-                        <p className="text-[10px] text-gray-500 leading-relaxed line-clamp-3">{module.content}</p>
+                      <div className="space-y-2 text-left" style={{
+                        backgroundColor: module.tags?.[0]?.startsWith('#') ? module.tags[0] : 'transparent',
+                        padding: module.tags?.[0]?.startsWith('#') ? '12px' : '0',
+                        borderRadius: '8px',
+                        color: module.tags?.[0] === '#1a1a1a' ? 'white' : 'inherit'
+                      }}>
+                        <h5 className="text-[10px] font-bold mb-2">{module.title}</h5>
+                        <div className="text-[10px] leading-relaxed markdown-body">
+                          <Markdown>{module.content}</Markdown>
+                        </div>
                         {module.imageUrl && (
-                          <div className="mt-2 rounded-lg overflow-hidden border border-gray-100/10">
+                          <div className="mt-3 rounded-lg overflow-hidden border border-gray-100/10">
                             <img src={module.imageUrl} alt="" className="w-full h-auto object-cover" />
+                          </div>
+                        )}
+                        {module.videoUrl && (
+                          <div className="mt-3 rounded-lg overflow-hidden border border-gray-100/10">
+                            <video src={module.videoUrl} controls className="w-full h-auto object-cover" />
                           </div>
                         )}
                       </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BioPage, BioLink, BioModule, PageAnalytics } from '../types';
 import PublicBioPage from './PublicBioPage';
-import { CheckCircle2, Loader2, Globe, Settings, Eye, Layout, Link as LinkIcon, DollarSign, PenTool, Share2, Users, ChevronLeft, GripVertical, Plus, BarChart3, Mail, Download } from 'lucide-react';
+import { CheckCircle2, Loader2, Globe, Settings, Eye, Layout, Link as LinkIcon, DollarSign, PenTool, Share2, Users, ChevronLeft, GripVertical, Plus, BarChart3, Mail, Download , ShoppingCart, Youtube, Bold, Italic, Type, Quote, Link2, Palette, Image as ImageIcon, Smile, Folder } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { getPageAnalytics, getPageSubscribers } from '../lib/db';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -73,6 +73,19 @@ export default function EditorDashboard({
             <Share2 className="w-4 h-4" />
             <span className="hidden md:inline">Condividi</span>
           </button>
+          <button 
+            onClick={() => {
+              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'folder' as const, clicks: 0, children: [] };
+              setPage({ ...page, links: [...page.links, newLink] });
+            }}
+            className="w-full py-4 border border-gray-200 bg-white rounded-2xl flex flex-col items-center justify-center gap-2 text-black hover:border-black transition-all group"
+          >
+            <div className="w-8 h-8 rounded-full bg-gray-100 group-hover:bg-black/10 group-hover:text-black flex items-center justify-center transition-colors">
+              <Folder className="w-4 h-4" />
+            </div>
+            <span className="font-bold text-[10px] uppercase tracking-widest text-center">Cartella</span>
+          </button>
+
         </div>
       </div>
 
@@ -347,6 +360,124 @@ const SortableLinkItem: React.FC<{
     transform: CSS.Transform.toString(transform),
     transition,
   };
+  
+  if (link.link_type === 'folder') {
+    return (
+      <div ref={setNodeRef} style={style} className="p-4 border-2 border-dashed border-gray-300 rounded-xl flex flex-col group bg-gray-50/50">
+        <div className="flex items-start justify-between">
+          <div 
+            {...attributes} 
+            {...listeners}
+            className="mt-2 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing mr-3"
+          >
+            <GripVertical className="w-5 h-5" />
+          </div>
+          <div className="flex-1 space-y-2">
+            <div className="flex items-center gap-2">
+              <Folder className="w-5 h-5 text-gray-400" />
+              <input 
+                type="text" 
+                value={link.title}
+                onChange={e => {
+                  const newLinks = page.links.map(l => l.id === link.id ? { ...l, title: e.target.value } : l);
+                  setPage({ ...page, links: newLinks });
+                }}
+                className="w-full text-sm font-bold outline-none bg-transparent placeholder-gray-400"
+                placeholder="Nome Cartella"
+              />
+            </div>
+            
+            <div className="mt-4 space-y-2">
+              {(link.children || []).map((child, idx) => (
+                <div key={child.id} className="flex gap-2 items-center bg-white p-2 rounded-lg border border-gray-200">
+                  <div className="flex flex-col gap-2 flex-1">
+                    <input 
+                      type="text" 
+                      value={child.title}
+                      onChange={e => {
+                        const newChildren = [...(link.children || [])];
+                        newChildren[idx] = { ...newChildren[idx], title: e.target.value };
+                        const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: newChildren } : l);
+                        setPage({ ...page, links: newLinks });
+                      }}
+                      className="w-full text-xs font-bold outline-none bg-transparent placeholder-gray-400"
+                      placeholder="Titolo Link"
+                    />
+                    <input 
+                      type="text" 
+                      value={child.url}
+                      onChange={e => {
+                        const newChildren = [...(link.children || [])];
+                        newChildren[idx] = { ...newChildren[idx], url: e.target.value };
+                        const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: newChildren } : l);
+                        setPage({ ...page, links: newLinks });
+                      }}
+                      className="w-full text-[10px] text-gray-400 outline-none bg-transparent placeholder-gray-400"
+                      placeholder="URL"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button 
+                      disabled={idx === 0}
+                      onClick={() => {
+                        const newChildren = [...(link.children || [])];
+                        const temp = newChildren[idx - 1];
+                        newChildren[idx - 1] = newChildren[idx];
+                        newChildren[idx] = temp;
+                        const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: newChildren } : l);
+                        setPage({ ...page, links: newLinks });
+                      }}
+                      className="text-gray-400 hover:text-black disabled:opacity-30"
+                    >↑</button>
+                    <button 
+                      disabled={idx === (link.children?.length || 0) - 1}
+                      onClick={() => {
+                        const newChildren = [...(link.children || [])];
+                        const temp = newChildren[idx + 1];
+                        newChildren[idx + 1] = newChildren[idx];
+                        newChildren[idx] = temp;
+                        const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: newChildren } : l);
+                        setPage({ ...page, links: newLinks });
+                      }}
+                      className="text-gray-400 hover:text-black disabled:opacity-30"
+                    >↓</button>
+                    <button 
+                      onClick={() => {
+                        const newChildren = (link.children || []).filter(c => c.id !== child.id);
+                        const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: newChildren } : l);
+                        setPage({ ...page, links: newLinks });
+                      }}
+                      className="text-red-400 hover:text-red-600"
+                    >×</button>
+                  </div>
+                </div>
+              ))}
+              
+              <button 
+                onClick={() => {
+                  const newChild = { id: Date.now().toString(), title: '', url: '', link_type: 'standard' as const, clicks: 0 };
+                  const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: [...(l.children || []), newChild] } : l);
+                  setPage({ ...page, links: newLinks });
+                }}
+                className="w-full py-2 bg-white border border-gray-200 rounded-lg text-[10px] font-bold uppercase tracking-widest text-black hover:border-black transition-colors"
+              >
+                + Aggiungi Link alla cartella
+              </button>
+            </div>
+          </div>
+          <button 
+            onClick={() => {
+              const newLinks = page.links.filter(l => l.id !== link.id);
+              setPage({ ...page, links: newLinks });
+            }}
+            className="flex items-center justify-center p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ml-4"
+          >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={setNodeRef} style={style} className="p-4 border border-gray-100 rounded-xl flex items-start justify-between hover:border-black transition-all group bg-white">
@@ -383,16 +514,21 @@ const SortableLinkItem: React.FC<{
             />
           </label>
           <div className="flex-1 space-y-2">
-            <input 
-              type="text" 
-              value={link.title}
-              onChange={e => {
-                const newLinks = page.links.map(l => l.id === link.id ? { ...l, title: e.target.value } : l);
-                setPage({ ...page, links: newLinks });
-              }}
-              className="w-full text-sm font-bold outline-none bg-transparent placeholder-gray-400"
-              placeholder="Titolo Link"
-            />
+            <div className="flex items-center gap-2">
+              <input 
+                type="text" 
+                value={link.title}
+                onChange={e => {
+                  const newLinks = page.links.map(l => l.id === link.id ? { ...l, title: e.target.value } : l);
+                  setPage({ ...page, links: newLinks });
+                }}
+                className="w-full text-sm font-bold outline-none bg-transparent placeholder-gray-400"
+                placeholder="Titolo Link"
+              />
+              {link.link_type === 'youtube' && <span className="text-[9px] font-black uppercase tracking-widest text-red-500 bg-red-50 px-2 py-0.5 rounded">YouTube</span>}
+              {link.link_type === 'spotify' && <span className="text-[9px] font-black uppercase tracking-widest text-[#1DB954] bg-[#1DB954]/10 px-2 py-0.5 rounded">Spotify</span>}
+              {link.link_type === 'amazon' && <span className="text-[9px] font-black uppercase tracking-widest text-[#FF9900] bg-[#FF9900]/10 px-2 py-0.5 rounded">Amazon</span>}
+            </div>
             <div className="flex gap-2 items-center">
               <input 
                 type="text" 
@@ -421,6 +557,18 @@ const SortableLinkItem: React.FC<{
               className="w-full text-[10px] text-gray-500 outline-none bg-transparent placeholder-gray-300 resize-none h-12"
               placeholder="Breve descrizione..."
             />
+            {link.link_type === 'amazon' && (
+              <input
+                type="text"
+                value={link.price || ''}
+                onChange={e => {
+                  const newLinks = page.links.map(l => l.id === link.id ? { ...l, price: e.target.value } : l);
+                  setPage({ ...page, links: newLinks });
+                }}
+                className="w-full text-xs font-bold outline-none bg-gray-50 p-2 rounded-lg text-black placeholder-gray-400 mt-2"
+                placeholder="Prezzo (es. €19.99)"
+              />
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 pt-1">
@@ -551,22 +699,59 @@ function LinksEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage
             </SortableContext>
           </div>
         </DndContext>
-        <button 
-          onClick={() => {
-            const newLink = {
-              id: Date.now().toString(),
-              title: '',
-              url: '',
-              isActive: true,
-              clicks: 0
-            };
-            setPage({ ...page, links: [...page.links, newLink] });
-          }}
-          className="w-full py-4 border-2 border-black rounded-full flex items-center justify-center gap-2 text-gray-500 hover:bg-black hover:text-white transition-all font-black uppercase tracking-widest text-[10px]"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Aggiungi nuovo Link</span>
-        </button>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4">
+          <button 
+            onClick={() => {
+              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'standard' as const, clicks: 0 };
+              setPage({ ...page, links: [...page.links, newLink] });
+            }}
+            className="w-full py-4 border border-gray-200 bg-white rounded-2xl flex flex-col items-center justify-center gap-2 text-black hover:border-black transition-all"
+          >
+            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+              <LinkIcon className="w-4 h-4" />
+            </div>
+            <span className="font-bold text-[10px] uppercase tracking-widest text-center">Link Standard</span>
+          </button>
+          
+          <button 
+            onClick={() => {
+              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'youtube' as const, clicks: 0 };
+              setPage({ ...page, links: [...page.links, newLink] });
+            }}
+            className="w-full py-4 border border-gray-200 bg-white rounded-2xl flex flex-col items-center justify-center gap-2 text-black hover:border-[#FF0000] transition-all group"
+          >
+            <div className="w-8 h-8 rounded-full bg-gray-100 group-hover:bg-[#FF0000]/10 group-hover:text-[#FF0000] flex items-center justify-center transition-colors">
+              <Youtube className="w-4 h-4" />
+            </div>
+            <span className="font-bold text-[10px] uppercase tracking-widest text-center">Video YouTube</span>
+          </button>
+
+          <button 
+            onClick={() => {
+              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'spotify' as const, clicks: 0 };
+              setPage({ ...page, links: [...page.links, newLink] });
+            }}
+            className="w-full py-4 border border-gray-200 bg-white rounded-2xl flex flex-col items-center justify-center gap-2 text-black hover:border-[#1DB954] transition-all group"
+          >
+            <div className="w-8 h-8 rounded-full bg-gray-100 group-hover:bg-[#1DB954]/10 group-hover:text-[#1DB954] flex items-center justify-center transition-colors">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.54.659.301 1.02zm1.44-3.3c-.301.42-.84.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15.001 10.62 18.6 12.84c.361.181.54.84.361 1.2zM19.08 9.72c-3.96-2.34-10.44-2.52-14.16-1.38-.6.18-1.2-.12-1.38-.66-.18-.6.12-1.2.66-1.38 4.32-1.26 11.4-1.02 15.84 1.62.54.3.72.96.42 1.5-.24.6-.9.78-1.38.3z"/></svg>
+            </div>
+            <span className="font-bold text-[10px] uppercase tracking-widest text-center">Spotify</span>
+          </button>
+
+          <button 
+            onClick={() => {
+              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'amazon' as const, clicks: 0, price: '' };
+              setPage({ ...page, links: [...page.links, newLink] });
+            }}
+            className="w-full py-4 border border-gray-200 bg-white rounded-2xl flex flex-col items-center justify-center gap-2 text-black hover:border-[#FF9900] transition-all group"
+          >
+            <div className="w-8 h-8 rounded-full bg-gray-100 group-hover:bg-[#FF9900]/10 group-hover:text-[#FF9900] flex items-center justify-center transition-colors">
+              <ShoppingCart className="w-4 h-4" />
+            </div>
+            <span className="font-bold text-[10px] uppercase tracking-widest text-center">Amazon</span>
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -577,8 +762,72 @@ function AppearanceEditor({ page, setPage }: { page: BioPage, setPage: (page: Bi
     setPage({ ...page, theme: { ...page.theme, ...updates } });
   };
 
+  const THEMES = [
+    { id: 'light', name: 'Chiaro', bg: '#ffffff', text: '#000000', btn: '#f3f4f6', btnText: '#000000', font: 'sans-serif', bgStyle: 'solid', btnRadius: 'lg' as const },
+    { id: 'dark', name: 'Scuro', bg: '#000000', text: '#ffffff', btn: '#1f2937', btnText: '#ffffff', font: 'sans-serif', bgStyle: 'solid', btnRadius: 'lg' as const },
+    { id: 'minimal', name: 'Minimal', bg: '#f9fafb', text: '#111827', btn: '#000000', btnText: '#ffffff', font: 'monospace', bgStyle: 'dots', btnRadius: 'none' as const },
+    { id: 'sunset', name: 'Tramonto', bg: '#ffecd2', text: '#4a2f1d', btn: '#fcb69f', btnText: '#4a2f1d', font: 'serif', bgStyle: 'gradient-animated', btnRadius: 'full' as const },
+    { id: 'ocean', name: 'Oceano', bg: '#0f2027', text: '#ffffff', btn: '#203a43', btnText: '#ffffff', font: 'sans-serif', bgStyle: 'gradient-animated', btnRadius: 'md' as const },
+    { id: 'neon', name: 'Neon Cyber', bg: '#000000', text: '#00ff00', btn: '#111111', btnText: '#00ff00', font: 'monospace', bgStyle: 'grid', btnRadius: 'none' as const },
+    { id: 'pastel', name: 'Pastello', bg: '#fdfbfb', text: '#4b5563', btn: '#ebedee', btnText: '#4b5563', font: 'sans-serif', bgStyle: 'solid', btnRadius: 'full' as const },
+    { id: 'lavender', name: 'Lavanda', bg: '#e0c3fc', text: '#4a306d', btn: '#8ec5fc', btnText: '#4a306d', font: 'serif', bgStyle: 'gradient-animated', btnRadius: 'lg' as const },
+    { id: 'forest', name: 'Foresta', bg: '#134e5e', text: '#e0f2f1', btn: '#71b280', btnText: '#ffffff', font: 'sans-serif', bgStyle: 'solid', btnRadius: 'md' as const },
+    { id: 'cherry', name: 'Ciliegia', bg: '#ff0844', text: '#ffffff', btn: '#ffb199', btnText: '#ffffff', font: 'sans-serif', bgStyle: 'gradient-animated', btnRadius: 'full' as const },
+    { id: 'retro', name: 'Retro 80s', bg: '#2c3e50', text: '#f1c40f', btn: '#e74c3c', btnText: '#ffffff', font: 'monospace', bgStyle: 'noise', btnRadius: 'sm' as const },
+    { id: 'glass', name: 'Vetro', bg: '#e2e2e2', text: '#1a1a1a', btn: '#ffffff', btnText: '#1a1a1a', font: 'sans-serif', bgStyle: 'mesh', btnRadius: 'lg' as const },
+    { id: 'midnight', name: 'Mezzanotte', bg: '#1a2980', text: '#ffffff', btn: '#26d0ce', btnText: '#1a2980', font: 'sans-serif', bgStyle: 'stars', btnRadius: 'full' as const },
+    { id: 'coffee', name: 'Caffè', bg: '#3e2723', text: '#d7ccc8', btn: '#5d4037', btnText: '#d7ccc8', font: 'serif', bgStyle: 'noise', btnRadius: 'none' as const },
+    { id: 'mint', name: 'Menta Fresca', bg: '#00b09b', text: '#ffffff', btn: '#96c93d', btnText: '#ffffff', font: 'sans-serif', bgStyle: 'gradient-animated', btnRadius: 'full' as const },
+    { id: 'blueprint', name: 'Progetto', bg: '#1e3c72', text: '#ffffff', btn: '#2a5298', btnText: '#ffffff', font: 'monospace', bgStyle: 'grid', btnRadius: 'sm' as const },
+    { id: 'peach', name: 'Pesca', bg: '#ed4264', text: '#ffffff', btn: '#ffedbc', btnText: '#ed4264', font: 'sans-serif', bgStyle: 'gradient-animated', btnRadius: 'lg' as const },
+    { id: 'mono', name: 'Monocromatico', bg: '#111111', text: '#eeeeee', btn: '#333333', btnText: '#ffffff', font: 'sans-serif', bgStyle: 'minimal-lines', btnRadius: 'none' as const },
+    { id: 'candy', name: 'Caramella', bg: '#d38312', text: '#ffffff', btn: '#a83279', btnText: '#ffffff', font: 'sans-serif', bgStyle: 'gradient-animated', btnRadius: 'full' as const },
+    { id: 'corporate', name: 'Aziendale', bg: '#ffffff', text: '#333333', btn: '#005bea', btnText: '#ffffff', font: 'sans-serif', bgStyle: 'solid', btnRadius: 'sm' as const }
+  ];
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      
+      <div className="bg-gray-50 p-6 rounded-2xl space-y-6">
+        <h3 className="text-xs font-black uppercase tracking-widest border-b border-gray-200 pb-4">Temi Predefiniti (20+)</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[300px] overflow-y-auto pr-2 pb-2">
+          {THEMES.map(t => (
+            <button
+              key={t.id}
+              onClick={() => updateTheme({ 
+                backgroundColor: t.bg, 
+                textColor: t.text, 
+                buttonColor: t.btn, 
+                buttonTextColor: t.btnText, 
+                fontFamily: t.font, 
+                backgroundStyle: t.bgStyle as any, 
+                buttonRadius: t.btnRadius 
+              })}
+              className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all hover:scale-105 ${
+                page.theme.backgroundColor === t.bg && page.theme.buttonColor === t.btn && page.theme.textColor === t.text
+                  ? 'border-black bg-gray-100 shadow-md ring-2 ring-black ring-offset-2'
+                  : 'border-gray-200 hover:border-black bg-white'
+              }`}
+            >
+              <div 
+                className="w-full h-12 rounded-lg border border-black/10 relative overflow-hidden flex items-center justify-center shadow-inner"
+                style={{ background: t.bg }}
+              >
+                <div 
+                  className="w-8 h-4 rounded-full shadow-sm"
+                  style={{ background: t.btn }}
+                />
+                {page.theme.backgroundColor === t.bg && page.theme.buttonColor === t.btn && page.theme.textColor === t.text && (
+                  <div className="absolute inset-0 bg-black/10 flex items-center justify-center">
+                    <CheckCircle2 className="w-6 h-6 text-white drop-shadow-md" />
+                  </div>
+                )}
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-wider">{t.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
       <div>
         <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-2">Aspetto e Design</h2>
         <p className="text-gray-500 text-sm">Personalizza i colori, i font e lo stile dei bottoni.</p>
@@ -628,6 +877,61 @@ function AppearanceEditor({ page, setPage }: { page: BioPage, setPage: (page: Bi
       </div>
 
       <div className="bg-gray-50 p-6 rounded-2xl space-y-6">
+        <h3 className="text-xs font-black uppercase tracking-widest border-b border-gray-200 pb-4">Stile Font</h3>
+        <div className="grid grid-cols-3 gap-4">
+          {[
+            { id: 'sans-serif', label: 'Sans' },
+            { id: 'serif', label: 'Serif' },
+            { id: 'monospace', label: 'Mono' }
+          ].map(font => (
+            <button
+              key={font.id}
+              onClick={() => updateTheme({ fontFamily: font.id })}
+              className={`py-3 border-2 transition-all rounded-xl ${
+                page.theme.fontFamily === font.id || (font.id === 'sans-serif' && !page.theme.fontFamily)
+                  ? 'border-black bg-white shadow-sm' 
+                  : 'border-gray-200 hover:border-black'
+              }`}
+            >
+              <span className="font-bold text-xs uppercase tracking-widest block" style={{ fontFamily: font.id }}>
+                {font.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-gray-50 p-6 rounded-2xl space-y-6">
+        <h3 className="text-xs font-black uppercase tracking-widest border-b border-gray-200 pb-4">Sfondo Animato / Grafica</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { id: 'solid', label: 'Tinta Unita' },
+            { id: 'gradient-animated', label: 'Gradiente Animato' },
+            { id: 'mesh', label: 'Mesh' },
+            { id: 'dots', label: 'Pois' },
+            { id: 'grid', label: 'Griglia' },
+            { id: 'noise', label: 'Rumore' },
+            { id: 'stars', label: 'Stelle Animate' },
+            { id: 'minimal-lines', label: 'Linee Minimali' }
+          ].map(bg => (
+            <button
+              key={bg.id}
+              onClick={() => updateTheme({ backgroundStyle: bg.id as any })}
+              className={`py-3 px-2 border-2 transition-all rounded-xl ${
+                (page.theme.backgroundStyle || 'solid') === bg.id
+                  ? 'border-black bg-white shadow-sm' 
+                  : 'border-gray-200 hover:border-black'
+              }`}
+            >
+              <span className="font-bold text-[10px] uppercase tracking-widest block text-center">
+                {bg.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-gray-50 p-6 rounded-2xl space-y-6">
         <h3 className="text-xs font-black uppercase tracking-widest border-b border-gray-200 pb-4">Stile Bottoni</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {(['none', 'sm', 'md', 'full'] as const).map(radius => (
@@ -649,10 +953,41 @@ function AppearanceEditor({ page, setPage }: { page: BioPage, setPage: (page: Bi
   );
 }
 
+import { Video } from 'lucide-react';
+
 function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage) => void }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
+  const [bgColor, setBgColor] = useState('');
+  const [seoTitle, setSeoTitle] = useState('');
+  const [seoDescription, setSeoDescription] = useState('');
+  const [showSeo, setShowSeo] = useState(false);
+
+  const insertFormat = (format: string) => {
+    const textarea = document.getElementById('microblog-textarea') as HTMLTextAreaElement;
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const before = text.substring(0, start);
+    const selected = text.substring(start, end);
+    const after = text.substring(end);
+    
+    let newText = text;
+    if (format === 'bold') newText = before + '**' + (selected || 'grassetto') + '**' + after;
+    if (format === 'italic') newText = before + '_' + (selected || 'corsivo') + '_' + after;
+    if (format === 'quote') newText = before + '\n> ' + (selected || 'citazione') + after;
+    if (format === 'link') newText = before + '[' + (selected || 'testo') + '](url)' + after;
+    if (format === 'h1') newText = before + '\n# ' + (selected || 'Titolo') + after;
+    
+    setContent(newText);
+    setTimeout(() => {
+      textarea.focus();
+    }, 0);
+  };
 
   const handlePost = () => {
     if (!title || !content) return;
@@ -662,13 +997,22 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
       title,
       content,
       imageUrl: imageUrl || undefined,
+      videoUrl: videoUrl || undefined,
+      seo: {
+        title: seoTitle || undefined,
+        description: seoDescription || undefined
+      },
       date: new Date().toISOString(),
-      tags: []
+      tags: bgColor ? [bgColor] : []
     };
     setPage({ ...page, modules: [newModule, ...(page.modules || [])] });
     setTitle('');
     setContent('');
     setImageUrl('');
+    setVideoUrl('');
+    setSeoTitle('');
+    setSeoDescription('');
+    setShowSeo(false);
     alert('Post aggiunto alla pagina!');
   };
 
@@ -687,11 +1031,33 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
           placeholder="Titolo della Storia..." 
           className="w-full bg-transparent border-b border-gray-200 py-2 font-bold mb-4 focus:outline-none focus:border-black" 
         />
+        <div className="flex items-center gap-1 mb-2 border-b border-gray-100 pb-2 overflow-x-auto">
+          <button type="button" onClick={() => insertFormat('bold')} className="p-1.5 text-gray-500 hover:text-black hover:bg-gray-200 rounded-md transition-colors" title="Grassetto"><Bold className="w-4 h-4" /></button>
+          <button type="button" onClick={() => insertFormat('italic')} className="p-1.5 text-gray-500 hover:text-black hover:bg-gray-200 rounded-md transition-colors" title="Corsivo"><Italic className="w-4 h-4" /></button>
+          <div className="w-px h-4 bg-gray-300 mx-1"></div>
+          <button type="button" onClick={() => insertFormat('h1')} className="p-1.5 text-gray-500 hover:text-black hover:bg-gray-200 rounded-md transition-colors" title="Titolo"><Type className="w-4 h-4" /></button>
+          <button type="button" onClick={() => insertFormat('quote')} className="p-1.5 text-gray-500 hover:text-black hover:bg-gray-200 rounded-md transition-colors" title="Citazione"><Quote className="w-4 h-4" /></button>
+          <button type="button" onClick={() => insertFormat('link')} className="p-1.5 text-gray-500 hover:text-black hover:bg-gray-200 rounded-md transition-colors" title="Link"><Link2 className="w-4 h-4" /></button>
+          <div className="w-px h-4 bg-gray-300 mx-1"></div>
+          <div className="flex items-center gap-1 relative group">
+            <button type="button" className="p-1.5 text-gray-500 hover:text-black hover:bg-gray-200 rounded-md transition-colors flex items-center gap-1" title="Colore Sfondo">
+              <Palette className="w-4 h-4" />
+            </button>
+            <div className="absolute top-full left-0 mt-1 hidden group-hover:flex bg-white shadow-lg border border-gray-200 rounded-lg p-2 gap-1 z-10">
+              {['transparent', '#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#e5e7eb', '#1a1a1a'].map(c => (
+                <button type="button" key={c} onClick={() => setBgColor(c === 'transparent' ? '' : c)} className="w-6 h-6 rounded-full border border-gray-300" style={{ background: c }}></button>
+              ))}
+            </div>
+          </div>
+          <button type="button" onClick={() => setContent(c => c + ' 😊')} className="p-1.5 text-gray-500 hover:text-black hover:bg-gray-200 rounded-md transition-colors" title="Emoji"><Smile className="w-4 h-4" /></button>
+        </div>
         <textarea 
+          id="microblog-textarea"
           value={content}
           onChange={e => setContent(e.target.value)}
-          placeholder="Scrivi qui il tuo pensiero breve..." 
-          className="w-full bg-transparent border-none text-sm text-gray-600 resize-none h-24 focus:outline-none"
+          placeholder="Scrivi qui la tua storia..." 
+          className="w-full bg-transparent border-none text-sm text-gray-800 resize-none h-32 focus:outline-none"
+          style={{ backgroundColor: bgColor || 'transparent', padding: bgColor ? '12px' : '0', borderRadius: '8px', color: bgColor === '#1a1a1a' ? 'white' : 'inherit' }}
         ></textarea>
         {imageUrl && (
           <div className="relative mb-4 rounded-xl overflow-hidden border border-gray-200 bg-gray-100 max-h-48">
@@ -704,30 +1070,90 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
             </button>
           </div>
         )}
-        <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-200">
-          <label className="text-[10px] font-bold text-gray-400 hover:text-black uppercase tracking-wider cursor-pointer">
-            Aggiungi Foto
+        {videoUrl && (
+          <div className="relative mb-4 rounded-xl overflow-hidden border border-gray-200 bg-gray-100 max-h-48">
+            <video src={videoUrl} controls className="w-full h-full object-contain" />
+            <button 
+              onClick={() => setVideoUrl('')}
+              className="absolute top-2 right-2 p-1 bg-black/50 hover:bg-black text-white rounded-full transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        )}
+        
+        {showSeo && (
+          <div className="mb-4 space-y-3 bg-white p-3 rounded-lg border border-gray-200">
+            <h4 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Impostazioni SEO</h4>
             <input 
-              type="file" 
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    setImageUrl(reader.result as string);
-                  };
-                  reader.readAsDataURL(file);
-                }
-              }}
+              type="text" 
+              value={seoTitle}
+              onChange={e => setSeoTitle(e.target.value)}
+              placeholder="SEO Title (opzionale)" 
+              className="w-full bg-transparent border-b border-gray-200 py-1 text-sm focus:outline-none focus:border-black" 
             />
-          </label>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-mono text-gray-400">{content.length} / 500 char</span>
+            <textarea 
+              value={seoDescription}
+              onChange={e => setSeoDescription(e.target.value)}
+              placeholder="SEO Description (opzionale)" 
+              className="w-full bg-transparent border-none text-sm resize-none h-16 focus:outline-none"
+            ></textarea>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mt-2 pt-2 border-t border-gray-200 gap-4">
+          <div className="flex items-center gap-4">
+            <label className="text-[10px] flex flex-col items-center gap-1 font-bold text-gray-400 hover:text-black uppercase tracking-wider cursor-pointer transition-colors">
+              <ImageIcon className="w-4 h-4" />
+              <span>Foto</span>
+              <input 
+                type="file" 
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      setImageUrl(reader.result as string);
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+            </label>
+            <label className="text-[10px] flex flex-col items-center gap-1 font-bold text-gray-400 hover:text-black uppercase tracking-wider cursor-pointer transition-colors">
+              <Video className="w-4 h-4" />
+              <span>Video</span>
+              <input 
+                type="file" 
+                accept="video/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      setVideoUrl(reader.result as string);
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+            </label>
+            <button 
+              onClick={() => setShowSeo(!showSeo)}
+              className={`text-[10px] flex flex-col items-center gap-1 font-bold uppercase tracking-wider transition-colors ${showSeo ? 'text-black' : 'text-gray-400 hover:text-black'}`}
+            >
+              <Globe className="w-4 h-4" />
+              <span>SEO</span>
+            </button>
+          </div>
+          <div className="flex items-center justify-end gap-3 w-full sm:w-auto">
+            <span className="text-[10px] font-mono text-gray-400">{content.length} / 500</span>
             <button 
               onClick={handlePost}
-              className="px-4 py-1.5 bg-black text-white text-xs font-bold rounded-lg uppercase tracking-widest hover:opacity-90"
+              className="px-6 py-2 bg-black text-white text-xs font-bold rounded-lg uppercase tracking-widest hover:opacity-90 w-full sm:w-auto"
             >Pubblica</button>
           </div>
         </div>

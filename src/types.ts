@@ -7,6 +7,8 @@ export type BioLink = {
   clicks?: number;
   description?: string;
   image?: string;
+  link_type?: 'standard' | 'youtube' | 'spotify' | 'amazon';
+  price?: string;
 };
 
 export type SocialLink = {
@@ -18,7 +20,7 @@ export type BioModule =
   | { id: string; type: 'tip_jar'; title: string; description: string; currency: string; suggestedAmounts: number[] }
   | { type: 'digital_product'; id: string; title: string; price: number; fileUrl: string; description: string }
   | { id: string; type: 'booking'; title: string; durationMinutes: number; price: number; description: string }
-  | { type: 'microblog'; id: string; title: string; content: string; date: string; imageUrl?: string; tags: string[] }
+  | { type: 'microblog'; id: string; title: string; content: string; date: string; imageUrl?: string; videoUrl?: string; tags: string[]; seo?: { title?: string; description?: string } }
   | { id: string; type: 'newsletter'; title: string; description: string; provider: string }
   | { id: string; type: 'embed'; title: string; embedUrl: string; platform: string };
 
@@ -29,6 +31,8 @@ export type BioTheme = {
   buttonTextColor: string;
   buttonRadius: 'none' | 'sm' | 'md' | 'lg' | 'full';
   fontFamily: string;
+  backgroundStyle?: 'solid' | 'gradient-animated' | 'mesh' | 'floating-shapes' | 'stars' | 'dots' | 'noise' | 'grid' | 'glassmorphism' | 'aurora' | 'cyberpunk' | 'retro-wave' | 'minimal-lines';
+  buttonStyle?: 'solid' | 'outline' | 'glass' | 'neo-brutalism' | 'soft-shadow' | 'glowing';
 };
 
 export type BioProfile = {
