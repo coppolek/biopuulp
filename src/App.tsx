@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { Toaster, toast } from 'react-hot-toast';
-import { Copy } from 'lucide-react';
+import { Copy, Files } from 'lucide-react';
 import PublicBioPage from './components/PublicBioPage';
 import EditorDashboard from './components/EditorDashboard';
 import Auth from './components/Auth';
@@ -32,6 +32,7 @@ function AppDashboard() {
   const [view, setView] = useState<'dashboard' | 'editor' | 'admin'>('dashboard');
   const [pages, setPages] = useState<BioPage[]>([]);
   const [currentPage, setCurrentPage] = useState<BioPage | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -58,11 +59,42 @@ function AppDashboard() {
     setView('editor');
   };
 
-  const handleSavePage = async (updatedPage: BioPage) => {
+  
+  const handleDuplicatePage = async (page: BioPage, newSlug: string) => {
+    if (!user || !newSlug) return;
+    const newPage: BioPage & { userId: string } = {
+      ...page,
+      id: `page_${Date.now()}`,
+      slug: newSlug,
+      customDomain: '',
+      userId: user.uid,
+      createdAt: new Date().toISOString(),
+      views: 0
+    };
+    await savePage(newPage);
+    setPages([...pages, newPage]);
+  };
+
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleSavePage = (updatedPage: BioPage) => {
     if (!user) return;
     setCurrentPage(updatedPage);
-    setPages(pages.map(p => p.id === updatedPage.id ? updatedPage : p));
-    await savePage({ ...updatedPage, userId: user.uid });
+    setPages(prev => prev.map(p => p.id === updatedPage.id ? updatedPage : p));
+    setSaveStatus('saving');
+        
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      savePage({ ...updatedPage, userId: user.uid })
+        .then(() => {
+          setSaveStatus('saved');
+          setTimeout(() => setSaveStatus('idle'), 2000);
+        })
+        .catch(err => {
+          console.error("Save error:", err);
+          setSaveStatus('idle');
+        });
+    }, 1000);
   };
 
   if (loading) {
@@ -83,6 +115,7 @@ function AppDashboard() {
           onEdit={handleEditPage} 
           onCreate={handleCreatePage}
           onSignOut={() => auth.signOut()}
+          onDuplicate={handleDuplicatePage}
           isAdmin={user.email === 'coppolek@gmail.com'}
           onAdminClick={() => setView('admin')}
         />
@@ -92,6 +125,7 @@ function AppDashboard() {
             page={currentPage} 
             setPage={handleSavePage}
             onBack={() => setView('dashboard')}
+            saveStatus={saveStatus}
           />
         )
       )}
@@ -99,16 +133,28 @@ function AppDashboard() {
   );
 }
 
-function DashboardView({ pages, onEdit, onCreate, onSignOut, isAdmin, onAdminClick }: { pages: BioPage[], onEdit: (page: BioPage) => void, onCreate: (slug: string) => void, onSignOut: () => void, isAdmin?: boolean, onAdminClick?: () => void }) {
+function DashboardView({ pages, onEdit, onCreate, onDuplicate, onSignOut, isAdmin, onAdminClick }: { pages: BioPage[], onEdit: (page: BioPage) => void, onCreate: (slug: string) => void, onDuplicate: (page: BioPage, newSlug: string) => void, onSignOut: () => void, isAdmin?: boolean, onAdminClick?: () => void }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newSlug, setNewSlug] = useState('');
+  const [duplicateTarget, setDuplicateTarget] = useState<BioPage | null>(null);
+  const [duplicateSlug, setDuplicateSlug] = useState('');
 
+  
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (newSlug.trim()) {
       onCreate(newSlug.trim());
       setIsModalOpen(false);
       setNewSlug('');
+    }
+  };
+
+  const handleDuplicateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (duplicateSlug.trim() && duplicateTarget) {
+      onDuplicate(duplicateTarget, duplicateSlug.trim());
+      setDuplicateTarget(null);
+      setDuplicateSlug('');
     }
   };
 
@@ -130,7 +176,48 @@ function DashboardView({ pages, onEdit, onCreate, onSignOut, isAdmin, onAdminCli
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white p-8 max-w-6xl mx-auto w-full">
+    <div className="flex-1 flex flex-col h-full bg-white p-4 md:p-8 max-w-6xl mx-auto w-full">
+      
+      {duplicateTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md border-2 border-black shadow-lg">
+            <h2 className="text-2xl font-black italic tracking-tighter mb-4">Duplica Pagina</h2>
+            <form onSubmit={handleDuplicateSubmit}>
+              <div className="mb-4">
+                <label className="block text-xs font-bold uppercase tracking-widest mb-2">Slug della nuova pagina</label>
+                <div className="flex items-center border border-gray-200 rounded-xl bg-gray-50 overflow-hidden focus-within:border-black transition-all">
+                  <span className="px-4 py-3 text-gray-500 font-medium">puulp.it/</span>
+                  <input 
+                    type="text" 
+                    value={duplicateSlug}
+                    onChange={(e) => setDuplicateSlug(e.target.value)}
+                    className="w-full py-3 pr-4 bg-transparent outline-none font-bold"
+                    placeholder="nuovo_slug"
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button 
+                  type="button" 
+                  onClick={() => setDuplicateTarget(null)}
+                  className="px-5 py-2 rounded-full text-xs font-bold uppercase tracking-widest text-gray-500 hover:text-black transition-all"
+                >
+                  Annulla
+                </button>
+                <button 
+                  type="submit"
+                  className="bg-black text-white px-5 py-2 rounded-full text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all"
+                >
+                  Duplica
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md border-2 border-black shadow-lg">
@@ -193,10 +280,10 @@ function DashboardView({ pages, onEdit, onCreate, onSignOut, isAdmin, onAdminCli
       </header>
 
       <main>
-        <div className="flex justify-between items-end mb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-black italic uppercase tracking-tighter">I tuoi Bio Site</h1>
-            <p className="text-gray-500 mt-2 font-medium">Gestisci le tue pagine, i team e monitora le analytics.</p>
+            <p className="text-gray-500 mt-2 font-medium">Gestisci le tue pagine e monitora le analytics.</p>
           </div>
           <button 
             onClick={() => setIsModalOpen(true)}
@@ -241,9 +328,19 @@ function DashboardView({ pages, onEdit, onCreate, onSignOut, isAdmin, onAdminCli
                         </button>
                       </div>
                     </div>
+                  
+                  <div className="flex items-center gap-3">
+                  </div>
+                    <button 
+                      onClick={() => { setDuplicateTarget(page); setDuplicateSlug(page.slug + '-copy'); }}
+                      className="p-2 bg-gray-100 text-gray-500 hover:text-black hover:bg-gray-200 rounded-lg transition-colors"
+                      title="Duplica Pagina"
+                    >
+                      <Files className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div className="bg-black text-white p-4 rounded-xl">
                     <div className="text-[10px] uppercase opacity-60 mb-1">Visite Totali</div>

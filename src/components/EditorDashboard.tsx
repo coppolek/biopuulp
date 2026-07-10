@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BioPage, BioLink, BioModule, PageAnalytics } from '../types';
 import PublicBioPage from './PublicBioPage';
-import { Globe, Settings, Layout, Link as LinkIcon, DollarSign, PenTool, Share2, Users, ChevronLeft, GripVertical, Plus, BarChart3, Mail, Download } from 'lucide-react';
+import { CheckCircle2, Loader2, Globe, Settings, Eye, Layout, Link as LinkIcon, DollarSign, PenTool, Share2, Users, ChevronLeft, GripVertical, Plus, BarChart3, Mail, Download } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { getPageAnalytics, getPageSubscribers } from '../lib/db';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -26,14 +26,18 @@ import { CSS } from '@dnd-kit/utilities';
 export default function EditorDashboard({ 
   page, 
   setPage, 
-  onBack 
+  onBack,
+  saveStatus = 'idle'
+
 }: { 
   page: BioPage, 
   setPage: (page: BioPage) => void,
-  onBack: () => void
+  onBack: () => void,
+  saveStatus?: 'idle' | 'saving' | 'saved'
 }) {
   const [activeTab, setActiveTab] = useState<'links' | 'appearance' | 'monetization' | 'microblog' | 'settings' | 'analytics' | 'audience' | 'layout' | 'seo'>('analytics');
   const [showShare, setShowShare] = useState(false);
+  const [showMobilePreview, setShowMobilePreview] = useState(false);
 
   return (
     <div className="h-screen w-full flex overflow-hidden bg-white text-[#1A1A1A] font-sans underline-offset-4">
@@ -60,7 +64,6 @@ export default function EditorDashboard({
           <NavItem icon={<DollarSign />} label="Monetizzazione" active={activeTab === 'monetization'} onClick={() => setActiveTab('monetization')} />
           <NavItem icon={<PenTool />} label="Micro-Blog" active={activeTab === 'microblog'} onClick={() => setActiveTab('microblog')} />
           <NavItem icon={<Settings />} label="Impostazioni" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
-          <NavItem icon={<Users />} label="Team" onClick={() => alert('Funzionalità Team in arrivo nelle prossime versioni!')} />
         </nav>
 
         <div className="p-4 border-t border-gray-100">
@@ -75,8 +78,22 @@ export default function EditorDashboard({
       </div>
 
       {/* Main Editor Area */}
-      <div className="flex-1 flex flex-col lg:flex-row h-full overflow-hidden">
-        
+      <div className="flex-1 flex flex-col lg:flex-row h-full overflow-hidden relative">
+      
+        {/* Save Status Indicator */}
+        <div className="absolute top-6 right-6 lg:right-[424px] xl:right-[524px] z-50 flex items-center gap-2 pointer-events-none">
+          {saveStatus === 'saving' && (
+            <span className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-widest bg-white shadow-sm px-3 py-1.5 rounded-full border border-gray-200">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvataggio...
+            </span>
+          )}
+          {saveStatus === 'saved' && (
+            <span className="flex items-center gap-1.5 text-xs font-bold text-green-600 uppercase tracking-widest bg-white shadow-sm px-3 py-1.5 rounded-full border border-green-200 animate-in fade-in slide-in-from-top-2">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Salvato
+            </span>
+          )}
+        </div>
+
         {/* Editor Controls */}
         <div className="flex-1 h-full overflow-y-auto bg-white border-r border-gray-50 custom-scrollbar">
           <div className="p-6 md:p-10 max-w-2xl mx-auto">
@@ -929,7 +946,7 @@ function SettingsEditor({ page, setPage }: { page: BioPage, setPage: (page: BioP
               onChange={e => setPage({ ...page, customDomain: e.target.value })}
               className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-black/5 transition-all font-mono text-sm"
             />
-            <button className="px-5 py-3 bg-black text-white font-bold rounded-xl text-sm uppercase tracking-widest hover:opacity-90 transition-opacity">
+            <button onClick={() => alert('Dominio salvato. Configura i DNS per attivarlo.')} className="px-5 py-3 bg-black text-white font-bold rounded-xl text-sm uppercase tracking-widest hover:opacity-90 transition-opacity">
               Collega
             </button>
           </div>

@@ -7,7 +7,7 @@ import {
   Instagram, Twitter, Youtube, Linkedin, Github, Facebook, Search, 
   ExternalLink, Coffee, Calendar, Download, Newspaper, SearchX, Mail, CheckCircle2
 } from 'lucide-react';
-import { subscribeToNewsletter, getAllBanners } from '../lib/db';
+import { subscribeToNewsletter, getAllBanners, trackLinkClick } from '../lib/db';
 
 const translations = {
   it: {
@@ -118,7 +118,7 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
   const lang = page.language || 'it';
   const [searchQuery, setSearchQuery] = useState('');
   const [banners, setBanners] = useState<AppBanner[]>([]);
-  const [confirmLink, setConfirmLink] = useState<{url: string} | null>(null);
+  const [confirmLink, setConfirmLink] = useState<{id?: string, url: string} | null>(null);
 
   useEffect(() => {
     if (!isPreview) {
@@ -412,7 +412,12 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
                 href={confirmLink.url}
                 target="_blank"
                 rel="noreferrer"
-                onClick={() => setConfirmLink(null)}
+                onClick={() => {
+                  if (!isPreview && confirmLink.id) {
+                    trackLinkClick(page.id, confirmLink.id);
+                  }
+                  setConfirmLink(null);
+                }}
                 className="flex-1 px-4 py-3 bg-[#1A1A1A] text-white font-bold uppercase tracking-widest rounded-xl hover:bg-black transition-colors flex items-center justify-center gap-2 text-xs"
               >
                 Continua

@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, deleteDoc, increment } from 'firebase/firestore';
 import { db } from './firebase';
 import { BioPage, UserAccount, PageAnalytics, DailyStats, AppBanner } from '../types';
 
@@ -26,24 +26,103 @@ export const getPageAnalytics = async (pageId: string): Promise<PageAnalytics> =
     return docSnap.data() as PageAnalytics;
   }
   
-  // Seed initial mock data if not exists
-  const mockDailyStats: DailyStats[] = Array.from({ length: 7 }).map((_, i) => {
+  // Create blank stats for last 7 days
+  const blankStats = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
     return {
       date: d.toISOString().split('T')[0],
-      views: Math.floor(Math.random() * 500) + 100,
-      clicks: Math.floor(Math.random() * 200) + 20,
+      views: 0,
+      clicks: 0,
     };
   });
   
   const analytics: PageAnalytics = {
     pageId,
-    dailyStats: mockDailyStats
+    dailyStats: blankStats
   };
   
   await setDoc(docRef, analytics);
   return analytics;
+};
+
+export const trackPageView = async (pageId: string): Promise<void> => {
+  try {
+    const pageRef = doc(db, 'pages', pageId);
+    
+    // Update total views using increment
+
+    await updateDoc(pageRef, {
+      views: increment(1)
+    });
+
+    const docRef = doc(db, 'analytics', pageId);
+    const docSnap = await getDoc(docRef);
+    
+    const today = new Date().toISOString().split('T')[0];
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data() as PageAnalytics;
+      const existingStatIndex = data.dailyStats.findIndex(s => s.date === today);
+      
+      if (existingStatIndex >= 0) {
+        data.dailyStats[existingStatIndex].views += 1;
+      } else {
+        data.dailyStats.push({ date: today, views: 1, clicks: 0 });
+      }
+      
+      await setDoc(docRef, data);
+    } else {
+      await setDoc(docRef, {
+        pageId,
+        dailyStats: [{ date: today, views: 1, clicks: 0 }]
+      });
+    }
+  } catch (error) {
+    console.error('Error tracking page view:', error);
+  }
+};
+
+export const trackLinkClick = async (pageId: string, linkId: string): Promise<void> => {
+  try {
+    // 1. Update analytics for today's clicks
+    const docRef = doc(db, 'analytics', pageId);
+    const docSnap = await getDoc(docRef);
+    const today = new Date().toISOString().split('T')[0];
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data() as PageAnalytics;
+      const existingStatIndex = data.dailyStats.findIndex(s => s.date === today);
+      
+      if (existingStatIndex >= 0) {
+        data.dailyStats[existingStatIndex].clicks += 1;
+      } else {
+        data.dailyStats.push({ date: today, views: 0, clicks: 1 });
+      }
+      await setDoc(docRef, data);
+    } else {
+      await setDoc(docRef, {
+        pageId,
+        dailyStats: [{ date: today, views: 0, clicks: 1 }]
+      });
+    }
+
+    // 2. Update specific link click count in page doc
+    const pageRef = doc(db, 'pages', pageId);
+    const pageSnap = await getDoc(pageRef);
+    
+    if (pageSnap.exists()) {
+      const pageData = pageSnap.data() as BioPage;
+      const linkIndex = pageData.links.findIndex(l => l.id === linkId);
+      
+      if (linkIndex >= 0) {
+        pageData.links[linkIndex].clicks = (pageData.links[linkIndex].clicks || 0) + 1;
+        await setDoc(pageRef, pageData);
+      }
+    }
+  } catch (error) {
+    console.error('Error tracking link click:', error);
+  }
 };
 
 export const getUserPages = async (userId: string): Promise<BioPage[]> => {
@@ -71,7 +150,16 @@ export const getPageBySlug = async (slug: string): Promise<BioPage | null> => {
   return { id: doc.id, ...doc.data() } as BioPage;
 };
 
+const cleanUndefined = (obj: any): any => {
+  if (Array.isArray(obj)) return obj.map(cleanUndefined);
+  if (obj && typeof obj === 'object') {
+    return Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined).map(([k, v]) => [k, cleanUndefined(v)]));
+  }
+  return obj;
+};
+
 export const savePage = async (page: BioPage & { userId: string }): Promise<void> => {
+  page = cleanUndefined(page);
   const pageRef = doc(db, 'pages', page.id);
   await setDoc(pageRef, page);
 };

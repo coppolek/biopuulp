@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { getPageBySlug } from '../lib/db';
+import { getPageBySlug, trackPageView } from '../lib/db';
 import { BioPage } from '../types';
 import PublicBioPage from './PublicBioPage';
 
@@ -15,6 +15,9 @@ export default function PublicView() {
       if (slug) {
         const data = await getPageBySlug(slug);
         setPage(data);
+        if (data) {
+          trackPageView(data.id);
+        }
       }
       setLoading(false);
     };
