@@ -35,7 +35,7 @@ export default function EditorDashboard({
   onBack: () => void,
   saveStatus?: 'idle' | 'saving' | 'saved'
 }) {
-  const [activeTab, setActiveTab] = useState<'links' | 'appearance' | 'monetization' | 'microblog' | 'settings' | 'analytics' | 'audience' | 'layout' | 'seo'>('analytics');
+  const [activeTab, setActiveTab] = useState<'links' | 'appearance' | 'microblog' | 'settings' | 'analytics' | 'audience' | 'layout' | 'seo'>('analytics');
   const [showShare, setShowShare] = useState(false);
   const [showMobilePreview, setShowMobilePreview] = useState(false);
 
@@ -61,7 +61,6 @@ export default function EditorDashboard({
           <NavItem icon={<LinkIcon />} label="Link & Navigazione" active={activeTab === 'links'} onClick={() => setActiveTab('links')} />
           <NavItem icon={<Layout />} label="Aspetto" active={activeTab === 'appearance'} onClick={() => setActiveTab('appearance')} />
           <NavItem icon={<Mail />} label="Pubblico & Iscritti" active={activeTab === 'audience'} onClick={() => setActiveTab('audience')} />
-          <NavItem icon={<DollarSign />} label="Monetizzazione" active={activeTab === 'monetization'} onClick={() => setActiveTab('monetization')} />
           <NavItem icon={<PenTool />} label="Micro-Blog" active={activeTab === 'microblog'} onClick={() => setActiveTab('microblog')} />
           <NavItem icon={<Settings />} label="Impostazioni" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
         </nav>
@@ -103,7 +102,6 @@ export default function EditorDashboard({
             {activeTab === 'links' && <LinksEditor page={page} setPage={setPage} />}
             {activeTab === 'appearance' && <AppearanceEditor page={page} setPage={setPage} />}
             {activeTab === 'audience' && <AudienceEditor page={page} setPage={setPage} />}
-            {activeTab === 'monetization' && <MonetizationEditor page={page} setPage={setPage} />}
             {activeTab === 'microblog' && <MicroblogEditor page={page} setPage={setPage} />}
             {activeTab === 'settings' && <SettingsEditor page={page} setPage={setPage} />}
           </div>
@@ -651,51 +649,6 @@ function AppearanceEditor({ page, setPage }: { page: BioPage, setPage: (page: Bi
   );
 }
 
-function MonetizationEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage) => void }) {
-  return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight mb-2">Monetizzazione (E-commerce)</h2>
-        <p className="text-gray-500">Vendi prodotti, accetta mance e prenota appuntamenti direttamente dalla tua pagina.</p>
-      </div>
-
-      <div className="grid gap-4">
-        <div className="p-6 bg-white border border-gray-200 rounded-2xl flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-amber-100 text-amber-600 rounded-xl">
-              <DollarSign className="w-6 h-6" />
-            </div>
-            <div>
-              <h3 className="font-bold">Tip Jar (Mance)</h3>
-              <p className="text-sm text-gray-500">Permetti ai fan di supportarti economicamente.</p>
-            </div>
-          </div>
-          <button 
-            onClick={() => alert('Integrazione Stripe per Tip Jar in arrivo!')}
-            className="px-4 py-2 bg-black text-white text-sm font-medium rounded-lg"
-          >Configura</button>
-        </div>
-        
-        <div className="p-6 bg-white border border-gray-200 rounded-2xl flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
-              <PenTool className="w-6 h-6" />
-            </div>
-            <div>
-              <h3 className="font-bold">Prodotti Digitali</h3>
-              <p className="text-sm text-gray-500">Vendi ebook, preset, file digitali.</p>
-            </div>
-          </div>
-          <button 
-            onClick={() => alert('Gestione prodotti digitali in arrivo!')}
-            className="px-4 py-2 bg-black text-white text-sm font-medium rounded-lg"
-          >Aggiungi</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage) => void }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -934,27 +887,7 @@ function SettingsEditor({ page, setPage }: { page: BioPage, setPage: (page: BioP
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm mt-8 space-y-6">
-        <div>
-          <h3 className="text-lg font-bold tracking-tight mb-1">Dominio Personalizzato</h3>
-          <p className="text-gray-500 text-sm mb-4">Usa un tuo dominio al posto di puulp.it/{page.slug}</p>
-          <div className="flex gap-3 items-center">
-            <input 
-              type="text" 
-              placeholder="es. link.tuosito.com"
-              value={page.customDomain || ''}
-              onChange={e => setPage({ ...page, customDomain: e.target.value })}
-              className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-black/5 transition-all font-mono text-sm"
-            />
-            <button onClick={() => alert('Dominio salvato. Configura i DNS per attivarlo.')} className="px-5 py-3 bg-black text-white font-bold rounded-xl text-sm uppercase tracking-widest hover:opacity-90 transition-opacity">
-              Collega
-            </button>
-          </div>
-          <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200 text-sm text-gray-600">
-            <strong>Istruzioni DNS:</strong> Per collegare questo dominio, crea un record <strong>CNAME</strong> nel pannello del tuo provider DNS che punti a <code className="bg-gray-200 px-1 py-0.5 rounded text-black">cname.puulp.it</code>
-          </div>
-        </div>
-      </div>
+      
 
       <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm mt-8 space-y-6">
         <div>

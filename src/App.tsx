@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { Toaster, toast } from 'react-hot-toast';
-import { Copy, Files } from 'lucide-react';
+import { Copy, Files, Instagram, Twitter, Youtube, Linkedin, Github, Facebook, ExternalLink } from 'lucide-react';
 import PublicBioPage from './components/PublicBioPage';
 import EditorDashboard from './components/EditorDashboard';
 import Auth from './components/Auth';
@@ -11,6 +11,20 @@ import { auth } from './lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { getUserPages, createNewPage, savePage, getAllPages, deletePage, getAllBanners, saveBanner, deleteBanner } from './lib/db';
 import { BioPage, AppBanner } from './types';
+
+
+const SocialIcon = ({ platform, className }: { platform: string, className?: string }) => {
+  switch (platform) {
+    case 'instagram': return <Instagram className={className} />;
+    case 'twitter': return <Twitter className={className} />;
+    case 'youtube': return <Youtube className={className} />;
+    case 'linkedin': return <Linkedin className={className} />;
+    case 'github': return <Github className={className} />;
+    case 'facebook': return <Facebook className={className} />;
+    case 'tiktok': return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>;
+    default: return <ExternalLink className={className} />;
+  }
+};
 
 export default function App() {
   return (

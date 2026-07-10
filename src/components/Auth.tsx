@@ -1,7 +1,30 @@
 import React, { useState } from 'react';
 import { auth } from '../lib/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { CheckCircle2, Sparkles, Zap, Infinity } from 'lucide-react';
+import { CheckCircle2, Sparkles, Zap, Infinity, ChevronDown } from 'lucide-react';
+
+const FAQItem = ({ question, answer }: { question: string, answer: string }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <div className="border-b border-white/10 py-5">
+      <button 
+        onClick={() => setIsOpen(!isOpen)} 
+        type="button"
+        className="flex w-full items-center justify-between text-left font-bold text-lg hover:text-gray-300 transition-colors"
+      >
+        <span>{question}</span>
+        <ChevronDown className={`w-5 h-5 flex-shrink-0 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      <div 
+        className={`grid transition-all duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0'}`}
+      >
+        <p className="overflow-hidden text-gray-400 text-sm leading-relaxed pr-8">
+          {answer}
+        </p>
+      </div>
+    </div>
+  );
+};
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(false); // Default to register as requested
@@ -58,7 +81,7 @@ export default function Auth() {
   return (
     <div className="flex min-h-screen bg-white">
       {/* Left Side: Landing Content */}
-      <div className="hidden lg:flex lg:w-1/2 bg-[#1A1A1A] text-white p-12 flex-col justify-between relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 bg-[#1A1A1A] text-white p-12 flex-col justify-between relative overflow-y-auto">
         <div className="relative z-10">
           <h1 className="text-4xl font-black italic tracking-tighter mb-12">
             PUULP
@@ -90,7 +113,7 @@ export default function Auth() {
                 </div>
                 <div>
                   <h3 className="font-bold text-lg">Tutte le funzioni premium</h3>
-                  <p className="text-gray-400 text-sm">Monetizzazione, layout personalizzati e statistiche incluse.</p>
+                  <p className="text-gray-400 text-sm">Layout personalizzati, micro-blogging e statistiche incluse.</p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -102,6 +125,28 @@ export default function Auth() {
                   <p className="text-gray-400 text-sm">Nessuna carta di credito richiesta. Mai.</p>
                 </div>
               </div>
+            </div>
+          </div>
+          
+          <div className="mt-24 max-w-lg">
+            <h3 className="text-2xl font-black tracking-tight mb-8">Domande Frequenti</h3>
+            <div>
+              <FAQItem 
+                question="Quali sono i vantaggi di BioLink Pro?" 
+                answer="BioLink Pro (PUULP) ti permette di avere un'unica pagina elegante per tutti i tuoi contenuti: link, testi, social. È lo strumento definitivo per i creator che vogliono una presenza online professionale e minimalista." 
+              />
+              <FAQItem 
+                question="È davvero gratis al 100%?" 
+                answer="Sì. Non ci sono costi nascosti, abbonamenti premium o limiti ai blocchi che puoi inserire. Puoi creare un Bio Site completo e illimitato gratuitamente." 
+              />
+              <FAQItem 
+                question="Posso personalizzare il design?" 
+                answer="Assolutamente. Offriamo temi eleganti e minimalisti, font moderni e layout flessibili per far risaltare il tuo brand mantenendo un'estetica pulita." 
+              />
+              <FAQItem 
+                question="Serve saper programmare?" 
+                answer="No, il nostro editor visuale è pensato per essere estremamente intuitivo. Trascina i blocchi, scrivi i tuoi testi e pubblica in tempo reale, direttamente dal tuo smartphone o computer." 
+              />
             </div>
           </div>
         </div>
