@@ -14,7 +14,44 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-    app.post("/api/scrape", async (req, res) => {
+    app.get("/api/careerjet", async (req, res) => {
+    try {
+      const { keywords, location, maxResults = 5, affid: queryAffid, apiKey } = req.query;
+      const affid = queryAffid || process.env.CAREERJET_AFFID || "22222222222222222222222222222222";
+      const userIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "1.1.1.1";
+      const userAgent = req.headers['user-agent'] || "Mozilla/5.0";
+      
+      let url = `http://public.api.careerjet.net/search?locale_code=it_IT&keywords=${encodeURIComponent(keywords || '')}&location=${encodeURIComponent(location || '')}&affid=${affid}&user_ip=${userIp}&user_agent=${encodeURIComponent(userAgent)}`;
+      let headers = {
+        'Referer': 'https://example.com'
+      };
+
+      if (apiKey) {
+        url = `https://search.api.careerjet.net/v4/query?locale_code=it_IT&keywords=${encodeURIComponent(keywords || '')}&location=${encodeURIComponent(location || '')}&affid=${affid}&user_ip=${userIp}&user_agent=${encodeURIComponent(userAgent)}`;
+        headers['Authorization'] = 'Basic ' + Buffer.from(apiKey + ':').toString('base64');
+      }
+      
+      const response = await fetch(url, { headers });
+      
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(`Careerjet API Error: ${data.error || response.statusText}`);
+      }
+      
+      if (data.jobs) {
+        // limit results
+        data.jobs = data.jobs.slice(0, parseInt(maxResults));
+      }
+      
+      res.json(data);
+    } catch (error) {
+      console.error('Careerjet API error:', error);
+      res.status(500).json({ error: error.message || "Failed to fetch jobs" });
+    }
+  });
+
+  app.post("/api/scrape", async (req, res) => {
     try {
       let { url } = req.body;
       if (!url) {

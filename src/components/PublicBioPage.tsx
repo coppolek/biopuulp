@@ -78,20 +78,20 @@ const NewsletterForm = ({ module, pageId, lang }: { module: any, pageId: string,
         <h3 className="text-xs font-black uppercase tracking-widest">{module.title || translations[lang].newsletterTitle}</h3>
       </div>
       {module.description && <p className="text-[10px] text-gray-500 mb-3">{module.description}</p>}
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2">
         <input 
           type="email" 
           required
           placeholder={translations[lang].newsletterPlaceholder} 
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md outline-none focus:border-black transition-colors"
+          className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-md outline-none focus:border-black transition-colors"
           disabled={status === 'loading'}
         />
         <button 
           type="submit" 
           disabled={status === 'loading'}
-          className="px-4 py-2 bg-black text-white text-xs font-bold uppercase tracking-widest rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
+          className="w-full px-4 py-2 bg-black text-white text-xs font-bold uppercase tracking-widest rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
           {status === 'loading' ? '...' : translations[lang].newsletterButton}
         </button>
@@ -490,7 +490,13 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
                             <video src={module.videoUrl} controls className="w-full h-auto object-cover" />
                           </div>
                         )}
+                        {module.embedCode && (
+                          <div className="mt-3 rounded-lg overflow-hidden w-full" dangerouslySetInnerHTML={{ __html: module.embedCode }} />
+                        )}
                       </div>
+                    )}
+                    {module.type === 'careerjet' && (
+                      <CareerjetModule module={module} />
                     )}
                     {module.type === 'newsletter' && (
                       <NewsletterForm module={module} pageId={page.id} lang={lang} />
@@ -580,3 +586,114 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
 
   );
 }
+
+const CareerjetModule = ({ module }: { module: any }) => {
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (module.showWidget) {
+      const scriptId = 'cj-search-box-script';
+      if (!document.getElementById(scriptId)) {
+        const js = document.createElement('script');
+        js.id = scriptId;
+        js.async = true;
+        js.src = 'https://static.careerjet.org/js/all_widget_search_box_3rd_party.min.js?t=' + Date.now();
+        document.body.appendChild(js);
+      }
+      return;
+    }
+
+    const fetchJobs = async () => {
+      try {
+        const queryParams: Record<string, string> = {
+          keywords: module.keywords || '',
+          location: module.location || '',
+          maxResults: (module.maxResults || 5).toString()
+        };
+        if (module.affid) {
+          queryParams.affid = module.affid;
+        }
+        if (module.apiKey) {
+          queryParams.apiKey = module.apiKey;
+        }
+        const query = new URLSearchParams(queryParams);
+        const res = await fetch(`/api/careerjet?${query.toString()}`);
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'API Error');
+        }
+        setJobs(data.jobs || []);
+      } catch (err: any) {
+        console.error("Error fetching jobs:", err);
+        setJobs([{ error: err.message }]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchJobs();
+  }, [module.keywords, module.location, module.maxResults, module.showWidget, module.widgetUrl]);
+
+  if (module.showWidget) {
+    return (
+      <div className="w-full text-left">
+        <div className="flex items-center gap-2 mb-4">
+          <h3 className="text-xs font-black uppercase tracking-widest">{module.title || 'Cerca Lavoro'}</h3>
+        </div>
+        {!module.widgetUrl ? (
+          <p className="text-[10px] text-gray-500 py-4">URL del widget non configurato.</p>
+        ) : (
+          <div className="cj-search-box" data-url={module.widgetUrl}></div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full text-left">
+      <div className="flex items-center gap-2 mb-4">
+        <h3 className="text-xs font-black uppercase tracking-widest">{module.title || 'Annunci di Lavoro'}</h3>
+      </div>
+      
+      {loading ? (
+        <div className="py-4 text-center">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-black mx-auto"></div>
+        </div>
+      ) : jobs.length > 0 && jobs[0].error ? (
+        <div className="bg-red-50 text-red-500 text-[10px] p-3 rounded-lg border border-red-100">
+          <strong>Errore Careerjet:</strong> {jobs[0].error}
+          <br/>
+          {jobs[0].error.includes("Unauthorized access from IP") ? (
+            <span>Per utilizzare la chiave API v4, devi inserire l'IP indicato nell'errore (es. 34.96.39.181) nella whitelist (IP consentiti) all'interno del pannello sviluppatori del tuo account Careerjet. In alternativa, rimuovi la chiave API dal pannello del Bio Site per utilizzare l'API pubblica gratuita.</span>
+          ) : (
+            <span>Se stai utilizzando la chiave API v4, verifica che sia corretta. Se non ne hai una, rimuovi la chiave API dal pannello per usare quella pubblica.</span>
+          )}
+        </div>
+      ) : jobs.length === 0 ? (
+        <p className="text-[10px] text-gray-500 text-center py-4">Nessun annuncio trovato.</p>
+      ) : (
+        <div className="space-y-3">
+          {jobs.map((job: any, idx: number) => (
+            <a 
+              key={idx} 
+              href={job.url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="block bg-white border border-gray-200 rounded-lg p-3 hover:border-black transition-colors group"
+            >
+              <h4 className="font-bold text-sm text-black group-hover:underline line-clamp-1">{job.title}</h4>
+              <div className="flex flex-col gap-1 mt-1">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{job.company}</span>
+                <span className="text-[10px] text-gray-400">{job.locations}</span>
+                {job.salary && <span className="text-[10px] text-green-600 font-bold">{job.salary}</span>}
+              </div>
+            </a>
+          ))}
+          <div className="text-[9px] text-center text-gray-400 pt-2 opacity-60">
+            Powered by Careerjet
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

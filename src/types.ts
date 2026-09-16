@@ -7,7 +7,8 @@ export type BioLink = {
   clicks?: number;
   description?: string;
   image?: string;
-  link_type?: 'standard' | 'youtube' | 'spotify' | 'amazon';
+  link_type?: 'standard' | 'youtube' | 'spotify' | 'amazon' | 'folder';
+  children?: BioLink[];
   price?: string;
 };
 
@@ -20,9 +21,10 @@ export type BioModule =
   | { id: string; type: 'tip_jar'; title: string; description: string; currency: string; suggestedAmounts: number[] }
   | { type: 'digital_product'; id: string; title: string; price: number; fileUrl: string; description: string }
   | { id: string; type: 'booking'; title: string; durationMinutes: number; price: number; description: string }
-  | { type: 'microblog'; id: string; title: string; content: string; date: string; imageUrl?: string; videoUrl?: string; tags: string[]; seo?: { title?: string; description?: string } }
+  | { type: 'microblog'; id: string; title: string; content: string; date: string; imageUrl?: string; videoUrl?: string; embedCode?: string; tags: string[]; seo?: { title?: string; description?: string } }
   | { id: string; type: 'newsletter'; title: string; description: string; provider: string }
-  | { id: string; type: 'embed'; title: string; embedUrl: string; platform: string };
+  | { id: string; type: 'embed'; title: string; embedUrl: string; platform: string }
+  | { id: string; type: 'careerjet'; title: string; keywords: string; location: string; maxResults?: number; affid?: string; apiKey?: string; showWidget?: boolean; widgetUrl?: string };
 
 export type BioTheme = {
   backgroundColor: string;
@@ -47,24 +49,42 @@ export type DailyStats = {
   clicks: number;
 };
 
+export type MonthlyStats = {
+  month: string;
+  views: number;
+  clicks: number;
+};
+
+export type ReferralStat = {
+  source: string;
+  count: number;
+};
+
 export type PageAnalytics = {
   pageId: string;
   dailyStats: DailyStats[];
+  monthlyStats?: MonthlyStats[];
+  referrals?: ReferralStat[];
 };
 
-export type BannerType = 'image' | 'code';
+export type BannerType = 'image' | 'code' | 'text';
 
 export type AppBanner = {
   id: string;
   name: string;
   type: BannerType;
-  position: 'top' | 'bottom';
+  position: 'top' | 'bottom' | 'short_url';
   active: boolean;
   
   // For image banners
   imageUrl?: string;
   linkUrl?: string;
   
+  // For text banners
+  text?: string;
+  textColor?: string;
+  backgroundColor?: string;
+
   // For code banners
   code?: string;
 };
@@ -94,4 +114,19 @@ export type UserAccount = {
   name: string;
   email: string;
   pages: BioPage[];
+};
+
+export type ShortLink = {
+  id: string;
+  shortCode: string;
+  targetUrl: string;
+  title: string;
+  clicks: number;
+  createdAt: string;
+  monetized: boolean; // if true, shows interstitial ads before redirecting
+  seo?: {
+    title?: string;
+    description?: string;
+    imageUrl?: string;
+  };
 };

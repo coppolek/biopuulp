@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'react-hot-toast';
 import { BioPage, BioLink, BioModule, PageAnalytics } from '../types';
 import PublicBioPage from './PublicBioPage';
-import { CheckCircle2, Loader2, Globe, Settings, Eye, Layout, Link as LinkIcon, DollarSign, PenTool, Share2, Users, ChevronLeft, GripVertical, Plus, BarChart3, Mail, Download , ShoppingCart, Youtube, Bold, Italic, Type, Quote, Link2, Palette, Image as ImageIcon, Smile, Folder } from 'lucide-react';
+import { CheckCircle2, Loader2, Globe, Settings, Eye, Layout, Link as LinkIcon, DollarSign, PenTool, Share2, Users, ChevronLeft, GripVertical, Plus, BarChart3, Mail, Download , ShoppingCart, Youtube, Bold, Italic, Type, Quote, Link2, Palette, Image as ImageIcon, Smile, Folder, Briefcase } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { getPageAnalytics, getPageSubscribers } from '../lib/db';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -35,7 +36,7 @@ export default function EditorDashboard({
   onBack: () => void,
   saveStatus?: 'idle' | 'saving' | 'saved'
 }) {
-  const [activeTab, setActiveTab] = useState<'links' | 'appearance' | 'microblog' | 'settings' | 'analytics' | 'audience' | 'layout' | 'seo'>('analytics');
+  const [activeTab, setActiveTab] = useState<'links' | 'appearance' | 'microblog' | 'settings' | 'analytics' | 'audience' | 'layout' | 'seo' | 'careerjet'>('analytics');
   const [showShare, setShowShare] = useState(false);
   const [showMobilePreview, setShowMobilePreview] = useState(false);
 
@@ -62,6 +63,7 @@ export default function EditorDashboard({
           <NavItem icon={<Layout />} label="Aspetto" active={activeTab === 'appearance'} onClick={() => setActiveTab('appearance')} />
           <NavItem icon={<Mail />} label="Pubblico & Iscritti" active={activeTab === 'audience'} onClick={() => setActiveTab('audience')} />
           <NavItem icon={<PenTool />} label="Micro-Blog" active={activeTab === 'microblog'} onClick={() => setActiveTab('microblog')} />
+          <NavItem icon={<Briefcase />} label="Annunci Lavoro" active={activeTab === 'careerjet'} onClick={() => setActiveTab('careerjet')} />
           <NavItem icon={<Settings />} label="Impostazioni" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
         </nav>
 
@@ -117,6 +119,7 @@ export default function EditorDashboard({
             {activeTab === 'audience' && <AudienceEditor page={page} setPage={setPage} />}
             {activeTab === 'microblog' && <MicroblogEditor page={page} setPage={setPage} />}
             {activeTab === 'settings' && <SettingsEditor page={page} setPage={setPage} />}
+            {activeTab === 'careerjet' && <CareerjetEditor page={page} setPage={setPage} />}
           </div>
         </div>
 
@@ -173,7 +176,7 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, labe
         active ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'
       }`}
     >
-      <div className={`${active ? 'text-white' : 'text-gray-400'}`}>{React.cloneElement(icon as React.ReactElement, { className: 'w-4 h-4' })}</div>
+      <div className={`${active ? 'text-white' : 'text-gray-400'}`}>{React.cloneElement(icon as any, { className: 'w-4 h-4' })}</div>
       <span className="hidden md:block text-left">{label}</span>
     </button>
   );
@@ -206,6 +209,8 @@ const SortableLayoutItem: React.FC<{ block: any, id?: string }> = ({ block, id }
         <h4 className="font-bold text-sm">{block.title || 'Senza Titolo'}</h4>
         <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">{block.type}</p>
       </div>
+
+
     </div>
   );
 }
@@ -953,17 +958,20 @@ function AppearanceEditor({ page, setPage }: { page: BioPage, setPage: (page: Bi
   );
 }
 
-import { Video } from 'lucide-react';
+import { Video, Code, Trash2 } from 'lucide-react';
 
 function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage) => void }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
+  const [embedCode, setEmbedCode] = useState('');
   const [bgColor, setBgColor] = useState('');
   const [seoTitle, setSeoTitle] = useState('');
   const [seoDescription, setSeoDescription] = useState('');
   const [showSeo, setShowSeo] = useState(false);
+  const [showCode, setShowCode] = useState(false);
 
   const insertFormat = (format: string) => {
     const textarea = document.getElementById('microblog-textarea') as HTMLTextAreaElement;
@@ -991,13 +999,14 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
 
   const handlePost = () => {
     if (!title || !content) return;
-    const newModule: BioModule = {
+    const newModule: any = {
       type: 'microblog',
-      id: Date.now().toString(),
+      id: editingId || Date.now().toString(),
       title,
       content,
       imageUrl: imageUrl || undefined,
       videoUrl: videoUrl || undefined,
+      embedCode: embedCode || undefined,
       seo: {
         title: seoTitle || undefined,
         description: seoDescription || undefined
@@ -1005,15 +1014,48 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
       date: new Date().toISOString(),
       tags: bgColor ? [bgColor] : []
     };
-    setPage({ ...page, modules: [newModule, ...(page.modules || [])] });
+    
+    if (editingId) {
+      setPage({ ...page, modules: page.modules.map(m => m.id === editingId ? newModule : m) });
+    } else {
+      setPage({ ...page, modules: [newModule, ...(page.modules || [])] });
+    }
+    
     setTitle('');
     setContent('');
     setImageUrl('');
     setVideoUrl('');
+    setEmbedCode('');
     setSeoTitle('');
     setSeoDescription('');
     setShowSeo(false);
-    alert('Post aggiunto alla pagina!');
+    setShowCode(false);
+    setEditingId(null);
+    setBgColor('');
+    toast.success(editingId ? 'Post modificato!' : 'Post aggiunto alla pagina!');
+  };
+
+  const handleEdit = (m: any) => {
+    setEditingId(m.id);
+    setTitle(m.title || '');
+    setContent(m.content || '');
+    setImageUrl(m.imageUrl || '');
+    setVideoUrl(m.videoUrl || '');
+    setEmbedCode(m.embedCode || '');
+    setSeoTitle(m.seo?.title || '');
+    setSeoDescription(m.seo?.description || '');
+    setBgColor(m.tags?.[0] || '');
+    setShowSeo(!!(m.seo?.title || m.seo?.description));
+    setShowCode(!!m.embedCode);
+    
+    // Scroll to form
+    const form = document.getElementById('microblog-form');
+    if (form) form.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleDelete = (id: string) => {
+    setPage({ ...page, modules: page.modules.filter(m => m.id !== id) });
+    toast.success('Post eliminato');
   };
 
   return (
@@ -1023,7 +1065,7 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
         <p className="text-gray-500 text-sm">Condividi mini-saggi, pensieri o embed di video TikTok per non sovraccaricare il pubblico.</p>
       </div>
 
-      <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
+      <div id="microblog-form" className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
         <input 
           type="text" 
           value={title}
@@ -1079,6 +1121,18 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
+          </div>
+        )}
+        
+        {showCode && (
+          <div className="mb-4 space-y-3 bg-white p-3 rounded-lg border border-gray-200">
+            <h4 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Embed Code (HTML/JS)</h4>
+            <textarea 
+              value={embedCode}
+              onChange={e => setEmbedCode(e.target.value)}
+              placeholder="Incolla qui il codice iframe, script o HTML..." 
+              className="w-full bg-transparent border border-gray-200 p-2 text-sm resize-none h-24 focus:outline-none focus:border-black font-mono rounded"
+            ></textarea>
           </div>
         )}
         
@@ -1148,16 +1202,71 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
               <Globe className="w-4 h-4" />
               <span>SEO</span>
             </button>
+            <button 
+              onClick={() => setShowCode(!showCode)}
+              className={`text-[10px] flex flex-col items-center gap-1 font-bold uppercase tracking-wider transition-colors ${showCode || embedCode ? 'text-black' : 'text-gray-400 hover:text-black'}`}
+            >
+              <Code className="w-4 h-4" />
+              <span>Codice</span>
+            </button>
           </div>
           <div className="flex items-center justify-end gap-3 w-full sm:w-auto">
             <span className="text-[10px] font-mono text-gray-400">{content.length} / 500</span>
             <button 
               onClick={handlePost}
               className="px-6 py-2 bg-black text-white text-xs font-bold rounded-lg uppercase tracking-widest hover:opacity-90 w-full sm:w-auto"
-            >Pubblica</button>
+            >{editingId ? 'Salva Modifiche' : 'Pubblica'}</button>
+            {editingId && (
+              <button 
+                onClick={() => {
+                  setEditingId(null);
+                  setTitle('');
+                  setContent('');
+                  setImageUrl('');
+                  setVideoUrl('');
+                  setEmbedCode('');
+                  setSeoTitle('');
+                  setSeoDescription('');
+                  setShowSeo(false);
+                  setShowCode(false);
+                  setBgColor('');
+                }}
+                className="px-6 py-2 bg-gray-200 text-gray-600 text-xs font-bold rounded-lg uppercase tracking-widest hover:bg-gray-300 w-full sm:w-auto mt-2 sm:mt-0"
+              >Annulla</button>
+            )}
           </div>
         </div>
       </div>
+      {page.modules && page.modules.filter(m => m.type === 'microblog').length > 0 && (
+        <div className="mt-12 space-y-4">
+          <h3 className="font-bold uppercase tracking-widest text-xs text-gray-500 mb-4">Post Pubblicati</h3>
+          {page.modules.filter(m => m.type === 'microblog').map((m: any) => (
+            <div key={m.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between group">
+              <div>
+                <h4 className="font-black italic text-lg">{m.title}</h4>
+                <p className="text-gray-500 text-xs truncate max-w-sm mt-1">{m.content.substring(0, 100)}...</p>
+                <div className="text-[10px] text-gray-400 mt-2 font-mono">{new Date(m.date).toLocaleDateString()}</div>
+              </div>
+              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button 
+                  onClick={() => handleEdit(m)}
+                  className="p-2 bg-gray-100 hover:bg-gray-200 text-black rounded-lg transition-colors"
+                  title="Modifica"
+                >
+                  <PenTool className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => handleDelete(m.id)}
+                  className="p-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg transition-colors"
+                  title="Elimina"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1471,6 +1580,162 @@ function AudienceEditor({ page, setPage }: { page: BioPage, setPage: (page: BioP
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CareerjetEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage) => void }) {
+  const careerjetModule = page.modules.find(m => m.type === 'careerjet');
+  const hasCareerjet = !!careerjetModule;
+
+  const toggleCareerjet = () => {
+    if (hasCareerjet) {
+      setPage({ ...page, modules: page.modules.filter(m => m.type !== 'careerjet') });
+    } else {
+      setPage({
+        ...page,
+        modules: [...page.modules, {
+          id: Date.now().toString(),
+          type: 'careerjet' as const,
+          title: 'Annunci di Lavoro',
+          keywords: 'sviluppatore',
+          location: 'Milano',
+          maxResults: 5
+        }]
+      });
+    }
+  };
+
+  const updateCareerjet = (updates: any) => {
+    setPage({
+      ...page,
+      modules: page.modules.map(m => m.type === 'careerjet' ? { ...m, ...updates } : m)
+    });
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight mb-2">Lavoro (Careerjet)</h2>
+        <p className="text-gray-500">Importa annunci di lavoro aggiornati dinamicamente da Careerjet tramite API.</p>
+      </div>
+
+      <div className="p-6 bg-white border border-gray-200 rounded-2xl flex items-start sm:items-center justify-between flex-col sm:flex-row gap-4">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-indigo-100 text-indigo-600 rounded-xl">
+            <Briefcase className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="font-bold">Annunci di Lavoro</h3>
+            <p className="text-sm text-gray-500">Mostra gli ultimi annunci basati su ruolo e posizione.</p>
+          </div>
+        </div>
+        <button 
+          onClick={toggleCareerjet}
+          className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors ${hasCareerjet ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-black text-white hover:opacity-90'}`}
+        >
+          {hasCareerjet ? 'Rimuovi Modulo' : 'Aggiungi Modulo'}
+        </button>
+      </div>
+
+      {hasCareerjet && careerjetModule && careerjetModule.type === 'careerjet' && (
+        <div className="bg-white border border-gray-200 p-6 rounded-2xl shadow-sm space-y-4">
+          <h3 className="font-bold border-b border-gray-100 pb-2 mb-4">Configurazione API Careerjet</h3>
+          
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-widest mb-2">Titolo Sezione</label>
+            <input 
+              type="text" 
+              value={careerjetModule.title || ''}
+              onChange={(e) => updateCareerjet({ title: e.target.value })}
+              className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm focus:border-black transition-colors"
+            />
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest mb-2">Keywords (Es. Sviluppatore)</label>
+              <input 
+                type="text" 
+                value={careerjetModule.keywords || ''}
+                onChange={(e) => updateCareerjet({ keywords: e.target.value })}
+                className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm focus:border-black transition-colors"
+                placeholder="es. Sviluppatore React"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest mb-2">Luogo (Es. Milano)</label>
+              <input 
+                type="text" 
+                value={careerjetModule.location || ''}
+                onChange={(e) => updateCareerjet({ location: e.target.value })}
+                className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm focus:border-black transition-colors"
+                placeholder="es. Milano o Remote"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-widest mb-2">ID Affiliato Careerjet (Opzionale)</label>
+            <input 
+              type="text" 
+              value={careerjetModule.affid || ''}
+              onChange={(e) => updateCareerjet({ affid: e.target.value })}
+              className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm focus:border-black transition-colors mb-4"
+              placeholder="es. 22222222222222222222222222222222"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-widest mb-2">Chiave API Careerjet (Opzionale, v4)</label>
+            <input 
+              type="text" 
+              value={careerjetModule.apiKey || ''}
+              onChange={(e) => updateCareerjet({ apiKey: e.target.value })}
+              className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm focus:border-black transition-colors mb-4"
+              placeholder="Inserisci la tua API Key se possiedi un account dev"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-widest mb-2">Numero Risultati (Max 10)</label>
+            <input 
+              type="number" 
+              min="1"
+              max="10"
+              value={careerjetModule.maxResults || 5}
+              onChange={(e) => updateCareerjet({ maxResults: parseInt(e.target.value) || 5 })}
+              className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm focus:border-black transition-colors"
+            />
+          </div>
+
+          <div className="pt-4 border-t border-gray-100">
+            <label className="flex items-center space-x-3 mb-4">
+              <input 
+                type="checkbox"
+                checked={careerjetModule.showWidget || false}
+                onChange={(e) => updateCareerjet({ showWidget: e.target.checked })}
+                className="w-4 h-4 text-black focus:ring-black border-gray-300 rounded"
+              />
+              <span className="text-sm font-medium">Mostra barra di ricerca (Widget)</span>
+            </label>
+
+            {careerjetModule.showWidget && (
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-widest mb-2">URL del Widget (data-url)</label>
+                <input 
+                  type="text" 
+                  value={careerjetModule.widgetUrl || ''}
+                  onChange={(e) => updateCareerjet({ widgetUrl: e.target.value })}
+                  className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm focus:border-black transition-colors"
+                  placeholder="es. https://widget.careerjet.net/search-box/..."
+                />
+                <p className="text-xs text-gray-500 mt-2">Copia l'URL presente nell'attributo data-url del codice fornito da Careerjet.</p>
+              </div>
+            )}
           </div>
         </div>
       )}
