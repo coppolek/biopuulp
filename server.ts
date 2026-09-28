@@ -18,36 +18,73 @@ async function startServer() {
     try {
       const { keywords, location, maxResults = 5, affid: queryAffid, apiKey } = req.query;
       const affid = queryAffid || process.env.CAREERJET_AFFID || "22222222222222222222222222222222";
-      const userIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "1.1.1.1";
-      const userAgent = req.headers['user-agent'] || "Mozilla/5.0";
-      
-      let url = `http://public.api.careerjet.net/search?locale_code=it_IT&keywords=${encodeURIComponent(keywords || '')}&location=${encodeURIComponent(location || '')}&affid=${affid}&user_ip=${userIp}&user_agent=${encodeURIComponent(userAgent)}`;
-      let headers = {
-        'Referer': 'https://example.com'
-      };
+      const rawIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || "1.1.1.1";
+      const userIp = rawIp.split(",")[0].trim();
+      const userAgent = (req.headers['user-agent'] as string) || "Mozilla/5.0";
 
-      if (apiKey) {
-        url = `https://search.api.careerjet.net/v4/query?locale_code=it_IT&keywords=${encodeURIComponent(keywords || '')}&location=${encodeURIComponent(location || '')}&affid=${affid}&user_ip=${userIp}&user_agent=${encodeURIComponent(userAgent)}`;
-        headers['Authorization'] = 'Basic ' + Buffer.from(apiKey + ':').toString('base64');
-      }
-      
-      const response = await fetch(url, { headers });
-      
-      const data = await response.json();
+      let data: any = null;
+      let fallbackReason: string | null = null;
 
-      if (!response.ok) {
-        throw new Error(`Careerjet API Error: ${data.error || response.statusText}`);
+      // 1. If apiKey is provided, attempt v4 query
+      if (apiKey && typeof apiKey === "string" && apiKey.trim().length > 0) {
+        try {
+          const v4Url = `https://search.api.careerjet.net/v4/query?locale_code=it_IT&keywords=${encodeURIComponent((keywords as string) || "")}&location=${encodeURIComponent((location as string) || "")}&affid=${affid}&user_ip=${encodeURIComponent(userIp)}&user_agent=${encodeURIComponent(userAgent)}`;
+          const v4Res = await fetch(v4Url, {
+            headers: {
+              'Referer': 'https://example.com',
+              'Authorization': 'Basic ' + Buffer.from(apiKey.trim() + ":").toString("base64")
+            }
+          });
+          const v4Data = await v4Res.json().catch(() => null);
+          if (v4Res.ok && v4Data && Array.isArray(v4Data.jobs) && v4Data.jobs.length > 0) {
+            data = v4Data;
+          } else {
+            fallbackReason = v4Data?.error || `Status ${v4Res.status}`;
+            console.warn(`[Careerjet] v4 query failed (${fallbackReason}), seamlessly using public search endpoint.`);
+          }
+        } catch (v4Err: any) {
+          fallbackReason = v4Err?.message || "v4 fetch error";
+          console.warn("[Careerjet] v4 query exception, using public search endpoint:", v4Err?.message);
+        }
       }
-      
-      if (data.jobs) {
-        // limit results
-        data.jobs = data.jobs.slice(0, parseInt(maxResults));
+
+      // 2. Fallback to public search endpoint if v4 was not used or failed
+      if (!data) {
+        try {
+          const publicUrl = `http://public.api.careerjet.net/search?locale_code=it_IT&keywords=${encodeURIComponent((keywords as string) || "")}&location=${encodeURIComponent((location as string) || "")}&affid=${affid}&user_ip=${encodeURIComponent(userIp)}&user_agent=${encodeURIComponent(userAgent)}`;
+          const publicRes = await fetch(publicUrl, {
+            headers: {
+              'Referer': 'https://example.com'
+            }
+          });
+          const publicData = await publicRes.json().catch(() => null);
+          if (publicRes.ok && publicData && Array.isArray(publicData.jobs)) {
+            data = publicData;
+          } else {
+            console.warn("[Careerjet] Public search did not return jobs:", publicData?.error || publicRes.statusText);
+            data = publicData || { jobs: [] };
+          }
+        } catch (pubErr: any) {
+          console.warn("[Careerjet] Public search exception:", pubErr?.message);
+          data = { jobs: [] };
+        }
       }
-      
+
+      if (data && Array.isArray(data.jobs)) {
+        const limit = parseInt(maxResults as string) || 5;
+        data.jobs = data.jobs.slice(0, Math.min(Math.max(limit, 1), 10));
+      } else {
+        data = { jobs: [] };
+      }
+
+      if (fallbackReason) {
+        data.notice = `Risultati caricati via API pubblica (v4: ${fallbackReason})`;
+      }
+
       res.json(data);
-    } catch (error) {
-      console.error('Careerjet API error:', error);
-      res.status(500).json({ error: error.message || "Failed to fetch jobs" });
+    } catch (error: any) {
+      console.warn("[Careerjet] Gracefully handled error:", error?.message);
+      res.json({ jobs: [], error: error?.message || "Failed to fetch jobs" });
     }
   });
 

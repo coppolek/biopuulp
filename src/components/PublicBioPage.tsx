@@ -619,14 +619,16 @@ const CareerjetModule = ({ module }: { module: any }) => {
         }
         const query = new URLSearchParams(queryParams);
         const res = await fetch(`/api/careerjet?${query.toString()}`);
-        const data = await res.json();
         if (!res.ok) {
-          throw new Error(data.error || 'API Error');
+          console.warn("Could not fetch jobs, status:", res.status);
+          setJobs([]);
+          return;
         }
+        const data = await res.json();
         setJobs(data.jobs || []);
       } catch (err: any) {
-        console.error("Error fetching jobs:", err);
-        setJobs([{ error: err.message }]);
+        console.warn("Error fetching jobs:", err?.message || err);
+        setJobs([]);
       } finally {
         setLoading(false);
       }

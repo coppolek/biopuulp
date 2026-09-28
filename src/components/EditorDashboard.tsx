@@ -1695,9 +1695,12 @@ function CareerjetEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
               type="text" 
               value={careerjetModule.apiKey || ''}
               onChange={(e) => updateCareerjet({ apiKey: e.target.value })}
-              className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm focus:border-black transition-colors mb-4"
+              className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm focus:border-black transition-colors mb-1"
               placeholder="Inserisci la tua API Key se possiedi un account dev"
             />
+            <p className="text-[11px] text-gray-500 mb-4">
+              Nota: puoi lasciarlo vuoto per usare il servizio pubblico gratuito con il tuo ID Affiliato senza restrizioni di IP. Se la chiave inserita non ha l'IP del server autorizzato, il sistema passa automaticamente all'endpoint pubblico per mostrare sempre gli annunci.
+            </p>
           </div>
 
           <div>
