@@ -1,7 +1,187 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import * as cheerio from "cheerio";
+
+// Load Firebase configuration for SSR queries
+let firebaseConfig: any = null;
+try {
+  const configPath = path.resolve(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  }
+} catch (e) {
+  console.warn("Could not load firebase-applet-config.json:", e);
+}
+
+// In-memory cache for SSR metadata (15 seconds TTL)
+const metadataCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL_MS = 15000;
+
+async function getShortLinkData(shortCode: string) {
+  if (!firebaseConfig) return null;
+  const cacheKey = `short_${shortCode}`;
+  const cached = metadataCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents:runQuery?key=${firebaseConfig.apiKey}`;
+    const body = {
+      structuredQuery: {
+        from: [{ collectionId: "shortLinks" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "shortCode" },
+            op: "EQUAL",
+            value: { stringValue: shortCode }
+          }
+        },
+        limit: 1
+      }
+    };
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const doc = data[0]?.document;
+    if (!doc || !doc.fields) return null;
+    const f = doc.fields;
+    const result = {
+      id: doc.name.split("/").pop(),
+      title: f.title?.stringValue || "",
+      targetUrl: f.targetUrl?.stringValue || "",
+      monetized: f.monetized?.booleanValue || false,
+      shortCode: f.shortCode?.stringValue || shortCode,
+      seo: {
+        title: f.seo?.mapValue?.fields?.title?.stringValue || "",
+        description: f.seo?.mapValue?.fields?.description?.stringValue || "",
+        imageUrl: f.seo?.mapValue?.fields?.imageUrl?.stringValue || ""
+      }
+    };
+    metadataCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    return result;
+  } catch (e) {
+    console.error("Error querying shortlink for SSR:", e);
+    return null;
+  }
+}
+
+async function getBioPageData(slug: string) {
+  if (!firebaseConfig) return null;
+  const cacheKey = `bio_${slug}`;
+  const cached = metadataCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents:runQuery?key=${firebaseConfig.apiKey}`;
+    const body = {
+      structuredQuery: {
+        from: [{ collectionId: "pages" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "slug" },
+            op: "EQUAL",
+            value: { stringValue: slug }
+          }
+        },
+        limit: 1
+      }
+    };
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const doc = data[0]?.document;
+    if (!doc || !doc.fields) return null;
+    const f = doc.fields;
+    const result = {
+      slug: f.slug?.stringValue || slug,
+      profile: {
+        displayName: f.profile?.mapValue?.fields?.displayName?.stringValue || "",
+        bio: f.profile?.mapValue?.fields?.bio?.stringValue || "",
+        avatarUrl: f.profile?.mapValue?.fields?.avatarUrl?.stringValue || ""
+      },
+      seo: {
+        title: f.seo?.mapValue?.fields?.title?.stringValue || "",
+        description: f.seo?.mapValue?.fields?.description?.stringValue || "",
+        imageUrl: f.seo?.mapValue?.fields?.imageUrl?.stringValue || ""
+      }
+    };
+    metadataCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    return result;
+  } catch (e) {
+    console.error("Error querying bio page for SSR:", e);
+    return null;
+  }
+}
+
+const reservedPaths = new Set([
+  "api", "admin", "login", "editor", "analytics", "assets", "favicon.ico", "robots.txt", "ads.txt", "s", "og-default.png"
+]);
+
+function isValidSlug(slug: string) {
+  if (!slug || reservedPaths.has(slug)) return false;
+  if (slug.includes(".") || slug.startsWith("@") || slug.startsWith("_")) return false;
+  return /^[a-zA-Z0-9_-]+$/.test(slug);
+}
+
+function getOrigin(req: express.Request) {
+  const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
+  const host = (req.headers["x-forwarded-host"] as string) || req.get("host") || "localhost:3000";
+  return `${proto}://${host}`;
+}
+
+function injectMetaTags(html: string, meta: {
+  title: string;
+  description: string;
+  imageUrl: string;
+  url: string;
+}) {
+  const escapeAttr = (str: string) =>
+    (str || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const escapeContent = (str: string) =>
+    (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const newTags = `
+    <title>${escapeContent(meta.title)}</title>
+    <meta name="description" content="${escapeAttr(meta.description)}" />
+    
+    <!-- OpenGraph Social Tags -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="BioLink Pro" />
+    <meta property="og:title" content="${escapeAttr(meta.title)}" />
+    <meta property="og:description" content="${escapeAttr(meta.description)}" />
+    <meta property="og:image" content="${escapeAttr(meta.imageUrl)}" />
+    <meta property="og:image:alt" content="${escapeAttr(meta.title)}" />
+    <meta property="og:url" content="${escapeAttr(meta.url)}" />
+    
+    <!-- Twitter Social Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeAttr(meta.title)}" />
+    <meta name="twitter:description" content="${escapeAttr(meta.description)}" />
+    <meta name="twitter:image" content="${escapeAttr(meta.imageUrl)}" />
+  `;
+
+  // Strip placeholder tags if present
+  let cleaned = html
+    .replace(/<title>[\s\S]*?<\/title>/gi, "")
+    .replace(/<meta\s+name=["']description["'][^>]*>/gi, "")
+    .replace(/<meta\s+property=["']og:[^"']+["'][^>]*>/gi, "")
+    .replace(/<meta\s+name=["']twitter:[^"']+["'][^>]*>/gi, "");
+
+  return cleaned.replace("</head>", `${newTags}\n  </head>`);
+}
 
 async function startServer() {
   const app = express();
@@ -14,7 +194,52 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-    app.get("/api/careerjet", async (req, res) => {
+  // Dedicated Open Graph Image endpoints for Social Networks (Facebook, WhatsApp, Twitter, etc.)
+  app.get("/api/og-image/s/:shortCode", async (req, res) => {
+    try {
+      const link = await getShortLinkData(req.params.shortCode);
+      const rawImage = link?.seo?.imageUrl;
+      if (rawImage && rawImage.startsWith("data:")) {
+        const matches = rawImage.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches) {
+          const mimeType = matches[1];
+          const buffer = Buffer.from(matches[2], "base64");
+          res.setHeader("Content-Type", mimeType);
+          res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
+          return res.send(buffer);
+        }
+      } else if (rawImage && rawImage.startsWith("http")) {
+        return res.redirect(rawImage);
+      }
+      return res.sendFile(path.resolve(process.cwd(), "public", "og-default.png"));
+    } catch (e) {
+      return res.sendFile(path.resolve(process.cwd(), "public", "og-default.png"));
+    }
+  });
+
+  app.get("/api/og-image/bio/:slug", async (req, res) => {
+    try {
+      const page = await getBioPageData(req.params.slug);
+      const rawImage = page?.seo?.imageUrl || page?.profile?.avatarUrl;
+      if (rawImage && rawImage.startsWith("data:")) {
+        const matches = rawImage.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches) {
+          const mimeType = matches[1];
+          const buffer = Buffer.from(matches[2], "base64");
+          res.setHeader("Content-Type", mimeType);
+          res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
+          return res.send(buffer);
+        }
+      } else if (rawImage && rawImage.startsWith("http")) {
+        return res.redirect(rawImage);
+      }
+      return res.sendFile(path.resolve(process.cwd(), "public", "og-default.png"));
+    } catch (e) {
+      return res.sendFile(path.resolve(process.cwd(), "public", "og-default.png"));
+    }
+  });
+  
+  app.get("/api/careerjet", async (req, res) => {
     try {
       const { keywords, location, maxResults = 5, affid: queryAffid, apiKey } = req.query;
       const affid = queryAffid || process.env.CAREERJET_AFFID || "22222222222222222222222222222222";
@@ -28,7 +253,7 @@ async function startServer() {
       // 1. If apiKey is provided, attempt v4 query
       if (apiKey && typeof apiKey === "string" && apiKey.trim().length > 0) {
         try {
-          const v4Url = `https://search.api.careerjet.net/v4/query?locale_code=it_IT&keywords=${encodeURIComponent((keywords as string) || "")}&location=${encodeURIComponent((location as string) || "")}&affid=${affid}&user_ip=${encodeURIComponent(userIp)}&user_agent=${encodeURIComponent(userAgent)}`;
+          const v4Url = `https://api.careerjet.net/v4/query?locale_code=it_IT&keywords=${encodeURIComponent((keywords as string) || "")}&location=${encodeURIComponent((location as string) || "")}&affid=${affid}&user_ip=${encodeURIComponent(userIp)}&user_agent=${encodeURIComponent(userAgent)}`;
           const v4Res = await fetch(v4Url, {
             headers: {
               'Referer': 'https://example.com',
@@ -232,16 +457,98 @@ async function startServer() {
     }
   });
 
+  // Handler for /s/:shortCode with dynamic OpenGraph meta tags
+  const handleShortCodeSSR = async (req: express.Request, res: express.Response, next: express.NextFunction, getTemplate: () => Promise<string>) => {
+    try {
+      const shortCode = req.params.shortCode;
+      const link = await getShortLinkData(shortCode);
+      if (!link) {
+        return next();
+      }
+
+      const origin = getOrigin(req);
+      const imgUrl = (link.seo?.imageUrl?.startsWith("data:") || !link.seo?.imageUrl)
+        ? `${origin}/api/og-image/s/${shortCode}`
+        : link.seo.imageUrl;
+
+      const meta = {
+        title: link.seo?.title || link.title || "BioLink Pro",
+        description: link.seo?.description || "Clicca per aprire il link su BioLink Pro",
+        imageUrl: imgUrl,
+        url: `${origin}/s/${shortCode}`
+      };
+
+      const template = await getTemplate();
+      const html = injectMetaTags(template, meta);
+      return res.status(200).set({ "Content-Type": "text/html" }).end(html);
+    } catch (err) {
+      console.error("ShortLink SSR error:", err);
+      next();
+    }
+  };
+
+  // Handler for /:slug (Bio Page) with dynamic OpenGraph meta tags
+  const handleBioPageSSR = async (req: express.Request, res: express.Response, next: express.NextFunction, getTemplate: () => Promise<string>) => {
+    try {
+      const slug = req.params.slug;
+      if (!isValidSlug(slug)) {
+        return next();
+      }
+
+      const page = await getBioPageData(slug);
+      if (!page) {
+        return next();
+      }
+
+      const origin = getOrigin(req);
+      const rawImg = page.seo?.imageUrl || page.profile?.avatarUrl;
+      const imgUrl = (rawImg?.startsWith("data:") || !rawImg)
+        ? `${origin}/api/og-image/bio/${slug}`
+        : rawImg;
+
+      const meta = {
+        title: page.seo?.title || page.profile?.displayName || page.slug,
+        description: page.seo?.description || page.profile?.bio || "Visita la mia pagina su BioLink Pro",
+        imageUrl: imgUrl,
+        url: `${origin}/${slug}`
+      };
+
+      const template = await getTemplate();
+      const html = injectMetaTags(template, meta);
+      return res.status(200).set({ "Content-Type": "text/html" }).end(html);
+    } catch (err) {
+      console.error("BioPage SSR error:", err);
+      next();
+    }
+  };
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
+
+    const getDevTemplate = async (url: string) => {
+      const raw = fs.readFileSync(path.resolve(process.cwd(), "index.html"), "utf-8");
+      return await vite.transformIndexHtml(url, raw);
+    };
+
+    app.get("/s/:shortCode", (req, res, next) => handleShortCodeSSR(req, res, next, () => getDevTemplate(req.originalUrl)));
+    app.get("/:slug", (req, res, next) => handleBioPageSSR(req, res, next, () => getDevTemplate(req.originalUrl)));
+
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+
+    const getProdTemplate = async () => {
+      return fs.readFileSync(path.join(distPath, "index.html"), "utf-8");
+    };
+
+    app.get("/s/:shortCode", (req, res, next) => handleShortCodeSSR(req, res, next, getProdTemplate));
+    app.get("/:slug", (req, res, next) => handleBioPageSSR(req, res, next, getProdTemplate));
+
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
