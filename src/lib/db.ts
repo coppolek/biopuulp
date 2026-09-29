@@ -1,202 +1,194 @@
 import { compressDataUrl } from "./imageUtils";
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, deleteDoc, increment, addDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import { BioPage, UserAccount, PageAnalytics, DailyStats, AppBanner } from '../types';
+import { BioPage, PageAnalytics, AppBanner } from '../types';
+import {
+  getLocalPages,
+  saveLocalPage,
+  deleteLocalPage,
+  getLocalPageBySlug,
+  getLocalUserPages,
+  getLocalShortLinks,
+  saveLocalShortLink,
+  deleteLocalShortLink,
+  getLocalShortLinkByCode,
+  getLocalBanners,
+  saveLocalBanner,
+  deleteLocalBanner,
+  getLocalAnalytics,
+  trackLocalPageView,
+  trackLocalLinkClick,
+  saveLocalSubscriber,
+  getLocalSubscribers,
+  isQuotaExceeded,
+  setQuotaExceeded
+} from './fallbackStorage';
+
+export { isQuotaExceeded, setQuotaExceeded, subscribeToQuotaChanges } from './fallbackStorage';
+
+function handleFirestoreError(error: any) {
+  const msg = error?.message || String(error || '');
+  const code = error?.code || '';
+  if (
+    code === 'resource-exhausted' ||
+    msg.includes('Quota') ||
+    msg.includes('quota') ||
+    msg.includes('429') ||
+    msg.includes('Resource has been exhausted')
+  ) {
+    setQuotaExceeded(true);
+    console.warn('[Firestore Quota Exceeded] Seamlessly using resilient local storage cache.');
+  } else {
+    console.warn('[Firestore Error]', code, msg);
+  }
+}
 
 export const getAllBanners = async (): Promise<AppBanner[]> => {
-  const q = query(collection(db, 'banners'));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppBanner));
+  try {
+    if (!isQuotaExceeded()) {
+      const q = query(collection(db, 'banners'));
+      const querySnapshot = await getDocs(q);
+      const banners = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppBanner));
+      banners.forEach(b => saveLocalBanner(b));
+      if (banners.length > 0) return banners;
+    }
+  } catch (error: any) {
+    handleFirestoreError(error);
+  }
+  return getLocalBanners();
 };
 
 export const saveBanner = async (banner: AppBanner): Promise<void> => {
-  const bannerRef = doc(db, 'banners', banner.id);
-  await setDoc(bannerRef, banner);
+  saveLocalBanner(banner);
+  try {
+    if (!isQuotaExceeded()) {
+      const bannerRef = doc(db, 'banners', banner.id);
+      await setDoc(bannerRef, banner);
+    }
+  } catch (error: any) {
+    handleFirestoreError(error);
+  }
 };
 
 export const deleteBanner = async (bannerId: string): Promise<void> => {
-  const bannerRef = doc(db, 'banners', bannerId);
-  await deleteDoc(bannerRef);
+  deleteLocalBanner(bannerId);
+  try {
+    if (!isQuotaExceeded()) {
+      const bannerRef = doc(db, 'banners', bannerId);
+      await deleteDoc(bannerRef);
+    }
+  } catch (error: any) {
+    handleFirestoreError(error);
+  }
 };
 
 export const getPageAnalytics = async (pageId: string): Promise<PageAnalytics> => {
-  const docRef = doc(db, 'analytics', pageId);
-  const docSnap = await getDoc(docRef);
-  
-  let data: Partial<PageAnalytics> = {};
-  if (docSnap.exists()) {
-    data = docSnap.data() as PageAnalytics;
+  try {
+    if (!isQuotaExceeded()) {
+      const docRef = doc(db, 'analytics', pageId);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return docSnap.data() as PageAnalytics;
+      }
+    }
+  } catch (error: any) {
+    handleFirestoreError(error);
   }
-  
-  // Generate dummy data if missing
-  const today = new Date();
-  
-  if (!data.dailyStats) {
-    data.dailyStats = Array.from({ length: 7 }).map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return {
-        date: d.toISOString().split('T')[0],
-        views: Math.floor(Math.random() * 100) + 10,
-        clicks: Math.floor(Math.random() * 50) + 5,
-      };
-    });
-  }
-
-  if (!data.monthlyStats) {
-    data.monthlyStats = Array.from({ length: 6 }).map((_, i) => {
-      const d = new Date();
-      d.setMonth(d.getMonth() - (5 - i));
-      return {
-        month: d.toLocaleString('default', { month: 'short' }) + ' ' + d.getFullYear(),
-        views: Math.floor(Math.random() * 3000) + 500,
-        clicks: Math.floor(Math.random() * 1500) + 100,
-      };
-    });
-  }
-
-  if (!data.referrals) {
-    data.referrals = [
-      { source: 'Instagram', count: Math.floor(Math.random() * 500) + 100 },
-      { source: 'Twitter', count: Math.floor(Math.random() * 300) + 50 },
-      { source: 'Direct', count: Math.floor(Math.random() * 200) + 30 },
-      { source: 'TikTok', count: Math.floor(Math.random() * 400) + 120 },
-      { source: 'Other', count: Math.floor(Math.random() * 100) + 10 },
-    ].sort((a, b) => b.count - a.count);
-  }
-    
-  const analytics = {
-    pageId,
-    dailyStats: data.dailyStats,
-    monthlyStats: data.monthlyStats,
-    referrals: data.referrals
-  };
-    
-  // We won't overwrite existing db records just to add mock data, but we'll return it so the UI looks good.
-  if (!docSnap.exists()) {
-    await setDoc(docRef, analytics);
-  }
-  
-  return analytics;
+  return getLocalAnalytics(pageId);
 };
 
 export const trackPageView = async (pageId: string): Promise<void> => {
+  trackLocalPageView(pageId);
   try {
-    const pageRef = doc(db, 'pages', pageId);
-    
-    // Update total views using increment
-
-    await updateDoc(pageRef, {
-      views: increment(1)
-    });
-
-    const docRef = doc(db, 'analytics', pageId);
-    const docSnap = await getDoc(docRef);
-    
-    const today = new Date().toISOString().split('T')[0];
-    
-    if (docSnap.exists()) {
-      const data = docSnap.data() as PageAnalytics;
-      const existingStatIndex = data.dailyStats.findIndex(s => s.date === today);
-      
-      if (existingStatIndex >= 0) {
-        data.dailyStats[existingStatIndex].views += 1;
-      } else {
-        data.dailyStats.push({ date: today, views: 1, clicks: 0 });
-      }
-      
-      await setDoc(docRef, data);
-    } else {
-      await setDoc(docRef, {
-        pageId,
-        dailyStats: [{ date: today, views: 1, clicks: 0 }]
+    if (!isQuotaExceeded()) {
+      const pageRef = doc(db, 'pages', pageId);
+      await updateDoc(pageRef, {
+        views: increment(1)
       });
     }
-  } catch (error) {
-    console.error('Error tracking page view:', error);
+  } catch (error: any) {
+    handleFirestoreError(error);
   }
 };
 
 export const trackLinkClick = async (pageId: string, linkId: string): Promise<void> => {
+  trackLocalLinkClick(pageId, linkId);
   try {
-    // 1. Update analytics for today's clicks
-    const docRef = doc(db, 'analytics', pageId);
-    const docSnap = await getDoc(docRef);
-    const today = new Date().toISOString().split('T')[0];
-    
-    if (docSnap.exists()) {
-      const data = docSnap.data() as PageAnalytics;
-      const existingStatIndex = data.dailyStats.findIndex(s => s.date === today);
-      
-      if (existingStatIndex >= 0) {
-        data.dailyStats[existingStatIndex].clicks += 1;
-      } else {
-        data.dailyStats.push({ date: today, views: 0, clicks: 1 });
-      }
-      await setDoc(docRef, data);
-    } else {
-      await setDoc(docRef, {
-        pageId,
-        dailyStats: [{ date: today, views: 0, clicks: 1 }]
-      });
-    }
-
-    // 2. Update specific link click count in page doc
-    const pageRef = doc(db, 'pages', pageId);
-    const pageSnap = await getDoc(pageRef);
-    
-    if (pageSnap.exists()) {
-      const pageData = pageSnap.data() as BioPage;
-      let updated = false;
-      const linkIndex = pageData.links.findIndex(l => l.id === linkId);
-      
-      if (linkIndex >= 0) {
-        pageData.links[linkIndex].clicks = (pageData.links[linkIndex].clicks || 0) + 1;
-        updated = true;
-      } else {
-        for (const l of pageData.links) {
-          if (l.children) {
-            const childIdx = l.children.findIndex(c => c.id === linkId);
-            if (childIdx >= 0) {
-              l.children[childIdx].clicks = (l.children[childIdx].clicks || 0) + 1;
-              updated = true;
-              break;
-            }
-          }
+    if (!isQuotaExceeded()) {
+      const pageRef = doc(db, 'pages', pageId);
+      const pageSnap = await getDoc(pageRef);
+      if (pageSnap.exists()) {
+        const pageData = pageSnap.data() as BioPage;
+        const link = pageData.links?.find(l => l.id === linkId);
+        if (link) {
+          link.clicks = (link.clicks || 0) + 1;
+          await setDoc(pageRef, pageData);
         }
       }
-      if (updated) {
-        await setDoc(pageRef, pageData);
-      }
     }
-  } catch (error) {
-    console.error('Error tracking link click:', error);
+  } catch (error: any) {
+    handleFirestoreError(error);
   }
 };
 
 export const getUserPages = async (userId: string): Promise<BioPage[]> => {
-  const q = query(collection(db, 'pages'), where('userId', '==', userId));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BioPage));
+  try {
+    if (!isQuotaExceeded()) {
+      const q = query(collection(db, 'pages'), where('userId', '==', userId));
+      const querySnapshot = await getDocs(q);
+      const pages = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BioPage));
+      pages.forEach(p => saveLocalPage(p as any));
+      if (pages.length > 0) return pages;
+    }
+  } catch (error: any) {
+    handleFirestoreError(error);
+  }
+  return getLocalUserPages(userId);
 };
 
 export const getAllPages = async (): Promise<BioPage[]> => {
-  const q = query(collection(db, 'pages'));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BioPage));
+  try {
+    if (!isQuotaExceeded()) {
+      const q = query(collection(db, 'pages'));
+      const querySnapshot = await getDocs(q);
+      const pages = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BioPage));
+      pages.forEach(p => saveLocalPage(p as any));
+      if (pages.length > 0) return pages;
+    }
+  } catch (error: any) {
+    handleFirestoreError(error);
+  }
+  return getLocalPages();
 };
 
 export const deletePage = async (pageId: string): Promise<void> => {
-  const pageRef = doc(db, 'pages', pageId);
-  await deleteDoc(pageRef);
+  deleteLocalPage(pageId);
+  try {
+    if (!isQuotaExceeded()) {
+      const pageRef = doc(db, 'pages', pageId);
+      await deleteDoc(pageRef);
+    }
+  } catch (error: any) {
+    handleFirestoreError(error);
+  }
 };
 
 export const getPageBySlug = async (slug: string): Promise<BioPage | null> => {
-  const q = query(collection(db, 'pages'), where('slug', '==', slug));
-  const querySnapshot = await getDocs(q);
-  if (querySnapshot.empty) return null;
-  const doc = querySnapshot.docs[0];
-  return { id: doc.id, ...doc.data() } as BioPage;
+  try {
+    if (!isQuotaExceeded()) {
+      const q = query(collection(db, 'pages'), where('slug', '==', slug));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const doc = querySnapshot.docs[0];
+        const page = { id: doc.id, ...doc.data() } as BioPage;
+        saveLocalPage(page as any);
+        return page;
+      }
+    }
+  } catch (error: any) {
+    handleFirestoreError(error);
+  }
+  return getLocalPageBySlug(slug);
 };
 
 const cleanUndefined = (obj: any): any => {
@@ -238,7 +230,6 @@ export const savePage = async (page: BioPage & { userId: string }): Promise<void
           (m as any).imageUrl = await compressDataUrl((m as any).imageUrl, 640, 0.75);
         }
         if ("videoUrl" in m && typeof (m as any).videoUrl === "string" && (m as any).videoUrl.startsWith("data:") && (m as any).videoUrl.length > 50000) {
-          console.warn("Oversized video base64 removed to protect document size");
           (m as any).videoUrl = undefined;
         }
       }
@@ -247,8 +238,18 @@ export const savePage = async (page: BioPage & { userId: string }): Promise<void
     console.warn("Auto-compression during savePage caught error:", err);
   }
 
-  const pageRef = doc(db, 'pages', page.id);
-  await setDoc(pageRef, page);
+  // Save to resilient local storage first
+  saveLocalPage(page);
+
+  // Attempt Firestore sync
+  try {
+    if (!isQuotaExceeded()) {
+      const pageRef = doc(db, 'pages', page.id);
+      await setDoc(pageRef, page);
+    }
+  } catch (error: any) {
+    handleFirestoreError(error);
+  }
 };
 
 export const createNewPage = async (userId: string, slug: string): Promise<BioPage> => {
@@ -258,16 +259,17 @@ export const createNewPage = async (userId: string, slug: string): Promise<BioPa
     slug,
     profile: {
       name: `@${slug}`,
-      bio: 'New creator profile',
-      avatarUrl: 'https://i.pravatar.cc/300'
+      bio: 'Benvenuto sul mio profilo creator!',
+      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'
     },
     theme: {
       backgroundColor: '#ffffff',
       textColor: '#1A1A1A',
-      buttonColor: 'transparent',
-      buttonTextColor: '#1A1A1A',
-      buttonRadius: 'none',
-      fontFamily: 'sans-serif'
+      buttonColor: '#000000',
+      buttonTextColor: '#ffffff',
+      buttonRadius: 'lg',
+      fontFamily: 'sans-serif',
+      buttonStyle: 'solid'
     },
     links: [],
     socials: [],
@@ -281,87 +283,133 @@ export const createNewPage = async (userId: string, slug: string): Promise<BioPa
 };
 
 export const subscribeToNewsletter = async (pageId: string, email: string): Promise<void> => {
-  const subscriberRef = doc(collection(db, 'subscribers'));
-  await setDoc(subscriberRef, {
-    pageId,
-    email,
-    subscribedAt: new Date().toISOString()
-  });
+  saveLocalSubscriber(pageId, email);
+  try {
+    if (!isQuotaExceeded()) {
+      const subscriberRef = doc(collection(db, 'subscribers'));
+      await setDoc(subscriberRef, {
+        pageId,
+        email,
+        subscribedAt: new Date().toISOString()
+      });
+    }
+  } catch (error: any) {
+    handleFirestoreError(error);
+  }
 };
 
 export const getPageSubscribers = async (pageId: string): Promise<{id: string, email: string, subscribedAt: string}[]> => {
-  const q = query(collection(db, 'subscribers'), where('pageId', '==', pageId));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+  try {
+    if (!isQuotaExceeded()) {
+      const q = query(collection(db, 'subscribers'), where('pageId', '==', pageId));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+    }
+  } catch (error: any) {
+    handleFirestoreError(error);
+  }
+  return getLocalSubscribers(pageId);
 };
-
 
 export const getUserShortLinks = async (userId: string) => {
   try {
-    const q = query(collection(db, 'shortLinks'), where('userId', '==', userId));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    if (!isQuotaExceeded()) {
+      const q = query(collection(db, 'shortLinks'), where('userId', '==', userId));
+      const snapshot = await getDocs(q);
+      const links = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      links.forEach(l => saveLocalShortLink(l));
+      if (links.length > 0) return links;
+    }
   } catch (error) {
-    console.error('Error fetching short links:', error);
-    return [];
+    handleFirestoreError(error);
   }
+  return getLocalShortLinks(userId);
 };
 
 export const createShortLink = async (userId: string, data: any) => {
+  const newLink = {
+    id: `short_${Date.now()}`,
+    ...data,
+    userId,
+    createdAt: new Date().toISOString(),
+    clicks: 0
+  };
+  saveLocalShortLink(newLink);
+
   try {
-    const docRef = await addDoc(collection(db, 'shortLinks'), {
-      ...data,
-      userId,
-      createdAt: new Date().toISOString(),
-      clicks: 0
-    });
-    return { id: docRef.id, ...data, userId, createdAt: new Date().toISOString(), clicks: 0 };
+    if (!isQuotaExceeded()) {
+      const docRef = await addDoc(collection(db, 'shortLinks'), {
+        ...data,
+        userId,
+        createdAt: new Date().toISOString(),
+        clicks: 0
+      });
+      newLink.id = docRef.id;
+      saveLocalShortLink(newLink);
+    }
   } catch (error) {
-    console.error('Error creating short link:', error);
-    throw error;
+    handleFirestoreError(error);
   }
+  return newLink;
 };
 
 export const updateShortLink = async (id: string, data: any) => {
+  const existing = getLocalShortLinkByCode(data.shortCode) || { id };
+  saveLocalShortLink({ ...existing, ...data, id });
+
   try {
-    const docRef = doc(db, 'shortLinks', id);
-    await updateDoc(docRef, data);
+    if (!isQuotaExceeded()) {
+      const docRef = doc(db, 'shortLinks', id);
+      await updateDoc(docRef, data);
+    }
   } catch (error) {
-    console.error('Error updating short link:', error);
-    throw error;
+    handleFirestoreError(error);
   }
 };
 
 export const deleteShortLink = async (id: string) => {
+  deleteLocalShortLink(id);
   try {
-    await deleteDoc(doc(db, 'shortLinks', id));
+    if (!isQuotaExceeded()) {
+      await deleteDoc(doc(db, 'shortLinks', id));
+    }
   } catch (error) {
-    console.error('Error deleting short link:', error);
-    throw error;
+    handleFirestoreError(error);
   }
 };
 
 export const getShortLinkByCode = async (shortCode: string) => {
   try {
-    const q = query(collection(db, 'shortLinks'), where('shortCode', '==', shortCode));
-    const snapshot = await getDocs(q);
-    if (!snapshot.empty) {
-      return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as any;
+    if (!isQuotaExceeded()) {
+      const q = query(collection(db, 'shortLinks'), where('shortCode', '==', shortCode));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const item = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as any;
+        saveLocalShortLink(item);
+        return item;
+      }
     }
-    return null;
   } catch (error) {
-    console.error('Error getting short link:', error);
-    return null;
+    handleFirestoreError(error);
   }
+  return getLocalShortLinkByCode(shortCode);
 };
 
 export const incrementShortLinkClick = async (id: string) => {
   try {
-    const linkRef = doc(db, 'shortLinks', id);
-    await updateDoc(linkRef, {
-      clicks: increment(1)
-    });
+    const list = getLocalShortLinks('');
+    const item = list.find((l: any) => l.id === id);
+    if (item) {
+      item.clicks = (item.clicks || 0) + 1;
+      saveLocalShortLink(item);
+    }
+    if (!isQuotaExceeded()) {
+      const linkRef = doc(db, 'shortLinks', id);
+      await updateDoc(linkRef, {
+        clicks: increment(1)
+      });
+    }
   } catch (error) {
-    console.error('Error incrementing click:', error);
+    handleFirestoreError(error);
   }
 };

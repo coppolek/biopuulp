@@ -1,3 +1,4 @@
+import { GoogleGenAI, Type } from "@google/genai";
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -17,7 +18,8 @@ try {
 
 // In-memory cache for SSR metadata (15 seconds TTL)
 const metadataCache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_TTL_MS = 15000;
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache to avoid burning free tier quota
+let firestoreQuotaCircuitBreakerUntil = 0;
 
 async function getShortLinkData(shortCode: string) {
   if (!firebaseConfig) return null;
@@ -25,6 +27,10 @@ async function getShortLinkData(shortCode: string) {
   const cached = metadataCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     return cached.data;
+  }
+
+  if (Date.now() < firestoreQuotaCircuitBreakerUntil) {
+    return cached ? cached.data : null;
   }
 
   try {
@@ -47,7 +53,14 @@ async function getShortLinkData(shortCode: string) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
-    if (!res.ok) return null;
+
+    if (res.status === 429) {
+      firestoreQuotaCircuitBreakerUntil = Date.now() + 30 * 60 * 1000;
+      console.warn("[Server] Firestore 429 quota reached. Circuit breaker active for 30m.");
+      return cached ? cached.data : null;
+    }
+
+    if (!res.ok) return cached ? cached.data : null;
     const data = await res.json();
     const doc = data[0]?.document;
     if (!doc || !doc.fields) return null;
@@ -68,7 +81,7 @@ async function getShortLinkData(shortCode: string) {
     return result;
   } catch (e) {
     console.error("Error querying shortlink for SSR:", e);
-    return null;
+    return cached ? cached.data : null;
   }
 }
 
@@ -78,6 +91,10 @@ async function getBioPageData(slug: string) {
   const cached = metadataCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     return cached.data;
+  }
+
+  if (Date.now() < firestoreQuotaCircuitBreakerUntil) {
+    return cached ? cached.data : null;
   }
 
   try {
@@ -100,7 +117,14 @@ async function getBioPageData(slug: string) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
-    if (!res.ok) return null;
+
+    if (res.status === 429) {
+      firestoreQuotaCircuitBreakerUntil = Date.now() + 30 * 60 * 1000;
+      console.warn("[Server] Firestore 429 quota reached. Circuit breaker active for 30m.");
+      return cached ? cached.data : null;
+    }
+
+    if (!res.ok) return cached ? cached.data : null;
     const data = await res.json();
     const doc = data[0]?.document;
     if (!doc || !doc.fields) return null;
@@ -108,7 +132,7 @@ async function getBioPageData(slug: string) {
     const result = {
       slug: f.slug?.stringValue || slug,
       profile: {
-        displayName: f.profile?.mapValue?.fields?.displayName?.stringValue || "",
+        displayName: f.profile?.mapValue?.fields?.displayName?.stringValue || f.profile?.mapValue?.fields?.name?.stringValue || "",
         bio: f.profile?.mapValue?.fields?.bio?.stringValue || "",
         avatarUrl: f.profile?.mapValue?.fields?.avatarUrl?.stringValue || ""
       },
@@ -122,7 +146,7 @@ async function getBioPageData(slug: string) {
     return result;
   } catch (e) {
     console.error("Error querying bio page for SSR:", e);
-    return null;
+    return cached ? cached.data : null;
   }
 }
 
@@ -310,9 +334,149 @@ async function startServer() {
     }
   });
 
+  
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+async function rewriteArticleWithGemini({
+  rawTitle,
+  rawContent,
+  sourceUrl,
+  siteName,
+  author,
+  style = "editorial"
+}: {
+  rawTitle: string;
+  rawContent: string;
+  sourceUrl: string;
+  siteName?: string;
+  author?: string;
+  style?: string;
+}) {
+  let styleInstruction = "";
+  if (style === "storytelling") {
+    styleInstruction = "Tono narrativo, coinvolgente, personale, stile creator moderno, con un forte hook emotivo e aneddoti stimolanti.";
+  } else if (style === "summary") {
+    styleInstruction = "Tono sintetico, chiaro, diretto ai punti essenziali, con analisi rapida dei punti chiave (TL;DR) e bullet points.";
+  } else {
+    styleInstruction = "Tono editoriale di altissimo livello, autorevole, scorrevole, analitico e affascinante, ideale per una rivista moderna o newsletter di successo.";
+  }
+
+  const prompt = `Sei un esperto saggista, giornalista e content creator per la piattaforma BioLink Pro.
+Il tuo compito fondamentale è trasformare ed elaborare il seguente articolo importato dal web in un testo COMPLETAMENTE UNICO, ORIGINALE AL 100%, accattivante, ricco di valore e impeccabile in lingua ITALIANA.
+
+Linee guida indispensabili:
+1. NON copiare o tradurre mai le frasi alla lettera: rielabora totalmente i concetti, aggiungi prospettiva e adotta una voce originale e accattivante.
+2. ${styleInstruction}
+3. Utilizza una ricca e raffinata formattazione Markdown:
+   - Crea un titolo nuovo, unico, magnetico ed elegante (evita clickbait scadenti).
+   - Introduzione d'impatto (hook) che cattura subito il lettore.
+   - Sviluppa il corpo dell'articolo scandito da sottotitoli Markdown (## e ###).
+   - Inserisci punti elenco o numerati dove opportuno per facilitare la lettura visiva.
+   - Inserisci almeno una citazione o riflessione profonda formattata come blockquote Markdown (> Citazione o riflessione chiave).
+   - Conclusione stimolante con take-away o domanda aperta per la community.
+   - In fondo al testo, mantieni sempre la trasparenza indicando: "*Fonte ispiratrice: [${siteName || "Articolo Originale"}](${sourceUrl})*".
+4. Fornisci un estratto breve e i metadati SEO (titolo max 60 car, descrizione max 155 car).
+
+ARTICOLO DA ELABORARE:
+Titolo originale: ${rawTitle || "Senza titolo"}
+${siteName ? `Fonte originale: ${siteName}` : ""}
+${author ? `Autore: ${author}` : ""}
+Link originale: ${sourceUrl}
+
+Testo originale:
+${rawContent.slice(0, 10000)}
+`;
+
+  const models = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"];
+  let lastErr = null;
+
+  for (const model of models) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: {
+                type: Type.STRING,
+                description: "Nuovo titolo originale e accattivante in italiano per l'articolo",
+              },
+              content: {
+                type: Type.STRING,
+                description: "Testo completo dell'articolo rielaborato e formattato in Markdown (con sezioni ##, citazioni > e link fonte)",
+              },
+              excerpt: {
+                type: Type.STRING,
+                description: "Breve estratto riassuntivo del pezzo (2-3 frasi)",
+              },
+              seoTitle: {
+                type: Type.STRING,
+                description: "Titolo SEO ottimizzato (massimo 60 caratteri)",
+              },
+              seoDescription: {
+                type: Type.STRING,
+                description: "Descrizione SEO (massimo 155 caratteri)",
+              },
+              keyTakeaways: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: "3 punti chiave dell'articolo rielaborato",
+              },
+            },
+            required: ["title", "content", "excerpt", "seoTitle", "seoDescription"],
+          },
+        },
+      });
+
+      if (response.text) {
+        const parsed = JSON.parse(response.text);
+        return parsed;
+      }
+    } catch (err) {
+      lastErr = err;
+      console.warn(`Gemini rewrite failed with model ${model}:`, (err as any)?.message);
+      continue;
+    }
+  }
+
+  throw lastErr || new Error("Tutti i modelli Gemini non sono al momento disponibili.");
+}
+
+
+
+  // Endpoint to rewrite & make any article draft unique with Gemini
+  app.post("/api/ai/rewrite", async (req, res) => {
+    try {
+      const { title, content, sourceUrl = "", siteName = "", style = "editorial" } = req.body;
+      if (!title && !content) {
+        return res.status(400).json({ error: "Titolo o contenuto obbligatori" });
+      }
+
+      const aiResult = await rewriteArticleWithGemini({
+        rawTitle: title || "",
+        rawContent: content || "",
+        sourceUrl,
+        siteName,
+        style
+      });
+
+      res.json({
+        ...aiResult,
+        isAiElaborated: true
+      });
+    } catch (error: any) {
+      console.error("API AI Rewrite error:", error);
+      res.status(500).json({ error: error?.message || "Impossibile elaborare l'articolo con Gemini" });
+    }
+  });
+
+
   app.post("/api/scrape", async (req, res) => {
     try {
-      let { url } = req.body;
+      let { url, elaborateWithGemini = true, style = "editorial" } = req.body;
       if (!url) {
         return res.status(400).json({ error: "URL is required" });
       }
@@ -502,6 +666,38 @@ async function startServer() {
         markdownContent += sourceCredit;
       }
 
+      // Elaborate and make article unique with Gemini if requested
+      if (elaborateWithGemini && (articleText || description || title)) {
+        try {
+          const aiResult = await rewriteArticleWithGemini({
+            rawTitle: title,
+            rawContent: articleText || description,
+            sourceUrl: url,
+            siteName,
+            author,
+            style
+          });
+
+          return res.json({
+            title: aiResult.title || title.trim(),
+            description: aiResult.seoDescription || description.trim(),
+            image: image.trim(),
+            content: aiResult.content,
+            excerpt: aiResult.excerpt,
+            seoTitle: aiResult.seoTitle,
+            seoDescription: aiResult.seoDescription,
+            keyTakeaways: aiResult.keyTakeaways || [],
+            author: author.trim(),
+            siteName: siteName.trim(),
+            url,
+            isAiElaborated: true
+          });
+        } catch (aiErr) {
+          console.error("Gemini elaboration error during scrape:", aiErr);
+          // Fallback to raw scraped content if Gemini encounters transient error
+        }
+      }
+
       res.json({
         title: title.trim(),
         description: description.trim(),
@@ -509,7 +705,8 @@ async function startServer() {
         content: markdownContent.trim(),
         author: author.trim(),
         siteName: siteName.trim(),
-        url
+        url,
+        isAiElaborated: false
       });
     } catch (error: any) {
       console.error('Scraping error:', error);

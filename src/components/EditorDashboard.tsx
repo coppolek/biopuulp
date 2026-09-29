@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import { BioPage, BioLink, BioModule, PageAnalytics } from '../types';
 import PublicBioPage from './PublicBioPage';
-import { CheckCircle2, Loader2, Globe, Settings, Eye, Layout, Link as LinkIcon, DollarSign, Newspaper, PenTool, Share2, Users, ChevronLeft, GripVertical, Plus, BarChart3, Mail, Download , ShoppingCart, Youtube, Bold, Italic, Type, Quote, Link2, Palette, Image as ImageIcon, Smile, Folder, Briefcase, Upload, X } from 'lucide-react';
+import { CheckCircle2, Loader2, Globe, Settings, Eye, Layout, Link as LinkIcon, DollarSign, Newspaper, PenTool, Share2, Users, ChevronLeft, GripVertical, Plus, BarChart3, Mail, Download , ShoppingCart, Youtube, Bold, Italic, Type, Quote, Link2, Palette, Image as ImageIcon, Smile, Folder, Briefcase, Upload, X, Sparkles } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { getPageAnalytics, getPageSubscribers } from '../lib/db';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -1185,49 +1185,106 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
   const [scrapeArticleUrl, setScrapeArticleUrl] = useState('');
   const [isScrapingArticle, setIsScrapingArticle] = useState(false);
   const [previewTab, setPreviewTab] = useState<'write' | 'preview'>('write');
+  const [elaborateWithAi, setElaborateWithAi] = useState(true);
+  const [aiStyle, setAiStyle] = useState<'editorial' | 'storytelling' | 'summary'>('editorial');
+  const [isRewritingWithAi, setIsRewritingWithAi] = useState(false);
+  const [aiStatusMessage, setAiStatusMessage] = useState('');
+  const [isAiElaborated, setIsAiElaborated] = useState(false);
 
   const handleScrapeArticle = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const targetUrl = scrapeArticleUrl.trim();
     if (!targetUrl) {
-      toast.error('Inserisci l\'URL di un articolo da estrarre');
+      toast.error("Inserisci l'URL di un articolo da importare");
       return;
     }
 
     setIsScrapingArticle(true);
+    setAiStatusMessage(elaborateWithAi 
+      ? "Gemini sta estraendo e rielaborando l'articolo per renderlo unico al 100%..."
+      : "Estrazione dell'articolo in corso..."
+    );
+
     try {
       const res = await fetch('/api/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: targetUrl })
+        body: JSON.stringify({ 
+          url: targetUrl,
+          elaborateWithGemini: elaborateWithAi,
+          style: aiStyle
+        })
       });
-
       if (!res.ok) {
-        throw new Error('Errore durante lo scraping dell\'articolo');
+        throw new Error("Errore durante l'elaborazione dell'articolo");
       }
-
       const data = await res.json();
       if (!data.title && !data.description && !data.content) {
-        toast.error('Nessun dato trovato per questo articolo');
+        toast.error("Nessun contenuto trovato per questo link");
         return;
       }
 
       setTitle(data.title || '');
       setContent(data.content || data.description || '');
       if (data.image) setImageUrl(data.image);
-      if (data.title) setSeoTitle(data.title);
-      if (data.description) setSeoDescription(data.description);
-      if (data.title || data.description) setShowSeo(true);
+      if (data.seoTitle || data.title) setSeoTitle(data.seoTitle || data.title);
+      if (data.seoDescription || data.description) setSeoDescription(data.seoDescription || data.description);
+      if (data.seoTitle || data.seoDescription) setShowSeo(true);
 
-      toast.success('Articolo estratto con successo tramite scraping!');
+      if (data.isAiElaborated) {
+        setIsAiElaborated(true);
+        toast.success("✨ Articolo importato, elaborato e reso unico con Gemini AI!");
+      } else {
+        setIsAiElaborated(false);
+        toast.success("Articolo estratto dalla fonte!");
+      }
+
       setScrapeArticleUrl('');
       const form = document.getElementById('microblog-form');
       if (form) form.scrollIntoView({ behavior: 'smooth' });
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || 'Impossibile estrarre l\'articolo dal link');
+      toast.error(err.message || "Impossibile elaborare l'articolo dal link");
     } finally {
       setIsScrapingArticle(false);
+      setAiStatusMessage('');
+    }
+  };
+
+  const handleRewriteCurrentDraft = async () => {
+    if (!title && !content) {
+      toast.error("Inserisci prima un titolo o una bozza di testo da rielaborare con Gemini");
+      return;
+    }
+
+    setIsRewritingWithAi(true);
+    try {
+      const res = await fetch('/api/ai/rewrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          content,
+          style: aiStyle
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error("Errore durante la rielaborazione con Gemini AI");
+      }
+
+      const data = await res.json();
+      if (data.title) setTitle(data.title);
+      if (data.content) setContent(data.content);
+      if (data.seoTitle) setSeoTitle(data.seoTitle);
+      if (data.seoDescription) setSeoDescription(data.seoDescription);
+      setIsAiElaborated(true);
+      toast.success("✨ Articolo rielaborato e reso unico al 100% con Gemini AI!");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Impossibile completare la rielaborazione AI");
+    } finally {
+      setIsRewritingWithAi(false);
     }
   };
 
@@ -1323,23 +1380,73 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
         <p className="text-gray-500 text-sm">Pubblica articoli, mini-saggi, notizie o embed per i visitatori della tua pagina.</p>
       </div>
 
-      {/* Box Inserisci Articolo da Link tramite Scraping */}
-      <div className="bg-gradient-to-r from-blue-50/80 via-indigo-50/60 to-purple-50/40 border border-indigo-200 rounded-2xl p-5 shadow-xs">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
-            <Newspaper className="w-4 h-4" />
-          </div>
-          <div>
-            <h3 className="text-xs font-black uppercase tracking-wider text-indigo-950">
-              Inserisci Articolo da Link (Scraping Automatico)
-            </h3>
-            <p className="text-[11px] text-indigo-800/80">
-              Incolla il link di qualsiasi notizia o blog: estraiamo automaticamente titolo, testo completo dell\'articolo, copertina e crediti.
-            </p>
+      {/* Box Inserisci Articolo da Link & Rielabora con Gemini AI */}
+      <div className="bg-gradient-to-br from-indigo-50/90 via-purple-50/70 to-pink-50/40 border border-indigo-200/90 rounded-2xl p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-xs shrink-0">
+              <Sparkles className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-black uppercase tracking-wider text-indigo-950">
+                  Importa da Link & Rielabora con Gemini AI
+                </h3>
+                <span className="text-[9px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-100/90 px-2 py-0.5 rounded-full border border-indigo-200">
+                  Unico al 100%
+                </span>
+              </div>
+              <p className="text-[11px] text-indigo-900/80 mt-0.5">
+                Incolla il link di una notizia o blog: Gemini analizzerà la fonte e la riscriverà in un pezzo esclusivo, autorevole e coinvolgente per il tuo pubblico.
+              </p>
+            </div>
           </div>
         </div>
 
-        <form onSubmit={handleScrapeArticle} className="mt-3 flex flex-col sm:flex-row gap-2">
+        {/* AI Options Selector */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-indigo-200/50 text-xs">
+          <label className="flex items-center gap-2 cursor-pointer font-bold text-indigo-950 select-none">
+            <input 
+              type="checkbox"
+              checked={elaborateWithAi}
+              onChange={e => setElaborateWithAi(e.target.checked)}
+              className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 accent-indigo-600 cursor-pointer"
+            />
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Rielabora e rendi unico con Gemini AI</span>
+            </span>
+          </label>
+
+          {elaborateWithAi && (
+            <div className="flex items-center gap-1.5 bg-white/80 p-1 rounded-xl border border-indigo-100 shadow-2xs">
+              <span className="text-[10px] font-bold text-indigo-900/60 uppercase tracking-wider px-2">Stile:</span>
+              <button
+                type="button"
+                onClick={() => setAiStyle('editorial')}
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${aiStyle === 'editorial' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-900/70 hover:text-indigo-950 hover:bg-indigo-50'}`}
+              >
+                📰 Editoriale
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiStyle('storytelling')}
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${aiStyle === 'storytelling' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-900/70 hover:text-indigo-950 hover:bg-indigo-50'}`}
+              >
+                🚀 Storytelling
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiStyle('summary')}
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${aiStyle === 'summary' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-900/70 hover:text-indigo-950 hover:bg-indigo-50'}`}
+              >
+                ⚡ Punti Chiave
+              </button>
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={handleScrapeArticle} className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
             <input
               type="url"
@@ -1362,21 +1469,28 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
           <button
             type="submit"
             disabled={isScrapingArticle || !scrapeArticleUrl.trim()}
-            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+            className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-xs flex-shrink-0 cursor-pointer"
           >
             {isScrapingArticle ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Estrazione in corso...</span>
+                <span>{elaborateWithAi ? "Gemini sta elaborando..." : "Estrazione in corso..."}</span>
               </>
             ) : (
               <>
-                <Newspaper className="w-4 h-4" />
-                <span>Estrai Articolo</span>
+                <Sparkles className="w-4 h-4" />
+                <span>{elaborateWithAi ? "Estrai & Rendi Unico" : "Estrai Articolo"}</span>
               </>
             )}
           </button>
         </form>
+
+        {isScrapingArticle && aiStatusMessage && (
+          <div className="text-[11px] text-indigo-800 font-medium flex items-center gap-2 animate-pulse bg-white/70 px-3 py-1.5 rounded-lg border border-indigo-100">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <span>{aiStatusMessage}</span>
+          </div>
+        )}
       </div>
 
       <div id="microblog-form" className="p-5 bg-gray-50 rounded-2xl border border-gray-200/80 shadow-xs">
@@ -1447,7 +1561,45 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
             </div>
           </div>
           <button type="button" onClick={() => setContent(c => c + ' 😊')} className="p-1.5 text-gray-500 hover:text-black hover:bg-gray-200 rounded-md transition-colors" title="Emoji"><Smile className="w-4 h-4" /></button>
+          
+          <div className="w-px h-4 bg-gray-300 mx-1"></div>
+          
+          <button
+            type="button"
+            onClick={handleRewriteCurrentDraft}
+            disabled={isRewritingWithAi || (!title && !content)}
+            className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-900 border border-indigo-200 rounded-lg text-xs font-bold transition-all disabled:opacity-50 cursor-pointer ml-auto shrink-0 shadow-2xs"
+            title="Rielabora e rendi unico questo articolo con Gemini AI"
+          >
+            {isRewritingWithAi ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                <span>Rielaborazione...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Rendi Unico con Gemini</span>
+              </>
+            )}
+          </button>
         </div>
+
+        {isAiElaborated && (
+          <div className="mb-3 px-3 py-2 bg-gradient-to-r from-indigo-50/80 to-purple-50/60 border border-indigo-200/80 rounded-xl flex items-center justify-between text-xs text-indigo-950 font-medium">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>Articolo rielaborato con <strong>Gemini AI</strong>: unico al 100% e pronto per la pubblicazione.</span>
+            </div>
+            <button 
+              type="button" 
+              onClick={() => setIsAiElaborated(false)} 
+              className="text-indigo-400 hover:text-indigo-600 text-xs font-bold px-1"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <textarea 
           id="microblog-textarea"
           value={content}

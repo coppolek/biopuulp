@@ -12,14 +12,19 @@ export default function PublicView() {
 
   useEffect(() => {
     const fetchPage = async () => {
-      if (slug) {
-        const data = await getPageBySlug(slug);
-        setPage(data);
-        if (data) {
-          trackPageView(data.id);
+      try {
+        if (slug) {
+          const data = await getPageBySlug(slug);
+          setPage(data);
+          if (data) {
+            trackPageView(data.id);
+          }
         }
+      } catch (err) {
+        console.warn("Error fetching bio page:", err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchPage();

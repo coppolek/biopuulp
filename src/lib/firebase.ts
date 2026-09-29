@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { initializeFirestore, memoryLocalCache } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import config from '../../firebase-applet-config.json';
 
@@ -15,7 +15,14 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Use memoryLocalCache to eliminate IndexedDB multi-tab lease collisions and future update time skew in iframes/tabs
+// Use persistent cache with multi-tab manager, with graceful fallback to memory cache if indexedDB is restricted
+let localCacheSetting;
+try {
+  localCacheSetting = persistentLocalCache({ tabManager: persistentMultipleTabManager() });
+} catch (e) {
+  localCacheSetting = memoryLocalCache();
+}
+
 export const db = initializeFirestore(app, {
-  localCache: memoryLocalCache()
+  localCache: localCacheSetting
 }, config.firestoreDatabaseId);
