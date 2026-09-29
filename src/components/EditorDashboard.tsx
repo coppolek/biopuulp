@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import { BioPage, BioLink, BioModule, PageAnalytics } from '../types';
 import PublicBioPage from './PublicBioPage';
-import { CheckCircle2, Loader2, Globe, Settings, Eye, Layout, Link as LinkIcon, DollarSign, PenTool, Share2, Users, ChevronLeft, GripVertical, Plus, BarChart3, Mail, Download , ShoppingCart, Youtube, Bold, Italic, Type, Quote, Link2, Palette, Image as ImageIcon, Smile, Folder, Briefcase } from 'lucide-react';
+import { CheckCircle2, Loader2, Globe, Settings, Eye, Layout, Link as LinkIcon, DollarSign, PenTool, Share2, Users, ChevronLeft, GripVertical, Plus, BarChart3, Mail, Download , ShoppingCart, Youtube, Bold, Italic, Type, Quote, Link2, Palette, Image as ImageIcon, Smile, Folder, Briefcase, Upload, X } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { getPageAnalytics, getPageSubscribers } from '../lib/db';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -323,14 +323,66 @@ function SeoEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage) 
         </div>
 
         <div>
-          <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Immagine Open Graph (URL)</label>
-          <input 
-            type="url" 
-            value={page.seo?.imageUrl || ''}
-            onChange={e => updateSeo({ imageUrl: e.target.value })}
-            placeholder="https://..."
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors"
-          />
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Immagine Open Graph (URL o Carica)</label>
+            {page.seo?.imageUrl && (
+              <button
+                type="button"
+                onClick={() => updateSeo({ imageUrl: "" })}
+                className="text-[10px] text-red-500 hover:text-red-700 font-bold uppercase tracking-wider flex items-center gap-1"
+              >
+                <X className="w-3 h-3" /> Rimuovi
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <input 
+              type="text" 
+              value={page.seo?.imageUrl || ''}
+              onChange={e => updateSeo({ imageUrl: e.target.value })}
+              placeholder="https://... oppure carica un file dal dispositivo"
+              className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-black transition-colors"
+            />
+            <label className="flex items-center gap-2 px-4 py-3 bg-gray-100 hover:bg-black hover:text-white text-black text-xs font-bold rounded-xl cursor-pointer transition-all shrink-0 border border-gray-200">
+              <Upload className="w-4 h-4" />
+              <span>Carica</span>
+              <input 
+                type="file" 
+                accept="image/*" 
+                className="hidden" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const img = document.createElement("img");
+                      img.onload = () => {
+                        const canvas = document.createElement("canvas");
+                        const maxDim = 1200;
+                        let w = img.width;
+                        let h = img.height;
+                        if (w > maxDim || h > maxDim) {
+                          if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+                          else { w = Math.round((w * maxDim) / h); h = maxDim; }
+                        }
+                        canvas.width = w;
+                        canvas.height = h;
+                        const ctx = canvas.getContext("2d");
+                        if (ctx) {
+                          ctx.drawImage(img, 0, 0, w, h);
+                          updateSeo({ imageUrl: canvas.toDataURL("image/jpeg", 0.85) });
+                        } else {
+                          updateSeo({ imageUrl: reader.result as string });
+                        }
+                      };
+                      img.src = reader.result as string;
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+            </label>
+          </div>
           <p className="text-[10px] text-gray-400 mt-1">L'immagine mostrata quando il link viene condiviso. (Di base viene usato il tuo Avatar)</p>
           
           {page.seo?.imageUrl && (

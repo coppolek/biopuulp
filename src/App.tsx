@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { Toaster, toast } from 'react-hot-toast';
-import { Copy, Files, Globe, Instagram, Twitter, Youtube, Linkedin, Github, Facebook, ExternalLink } from 'lucide-react';
+import { Copy, Files, Globe, Instagram, Twitter, Youtube, Linkedin, Github, Facebook, ExternalLink, Upload, X, Image as ImageIcon } from 'lucide-react';
 import PublicBioPage from './components/PublicBioPage';
 import ShortLinkRedirect from './components/ShortLinkRedirect';
 import EditorDashboard from './components/EditorDashboard';
@@ -181,6 +181,39 @@ function AppDashboard() {
     </div>
   );
 }
+
+const compressAndLoadImage = (file: File, callback: (url: string) => void) => {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = document.createElement("img");
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const maxDim = 1200;
+      let width = img.width;
+      let height = img.height;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        callback(canvas.toDataURL("image/jpeg", 0.85));
+      } else {
+        callback(e.target?.result as string);
+      }
+    };
+    img.src = e.target?.result as string;
+  };
+  reader.readAsDataURL(file);
+};
 
 function DashboardView({ pages, shortLinks = [], onEdit, onViewAnalytics, onCreate, onDuplicate, onSignOut, isAdmin, onAdminClick, onCreateShortLink, onUpdateShortLink, onDeleteShortLink }: { pages: BioPage[], shortLinks?: any[], onEdit: (page: BioPage) => void, onViewAnalytics?: (page: BioPage) => void, onCreate: (slug: string) => void, onDuplicate: (page: BioPage, newSlug: string) => void, onSignOut: () => void, isAdmin?: boolean, onAdminClick?: () => void, onCreateShortLink?: (data: any) => void, onUpdateShortLink?: (id: string, data: any) => void, onDeleteShortLink?: (id: string) => void }) {
   const [activeTab, setActiveTab] = useState<'bio' | 'short'>('bio');
@@ -593,11 +626,38 @@ function DashboardView({ pages, shortLinks = [], onEdit, onViewAnalytics, onCrea
               <h2 className="text-2xl font-black italic tracking-tighter mb-4">{editingShortLink ? 'Modifica Short Link' : 'Crea Short Link'}</h2>
               <form onSubmit={(e) => {
                 e.preventDefault();
-                if (shortTargetUrl.trim() && shortCode.trim()) {
+                if (shortTargetUrl.trim()) {
+                  let formattedTargetUrl = shortTargetUrl.trim();
+                  if (!/^https?:\/\//i.test(formattedTargetUrl)) {
+                    formattedTargetUrl = "https://" + formattedTargetUrl;
+                  }
+
+                  const generateRandomCode = () => {
+                    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+                    let res = "";
+                    for (let i = 0; i < 6; i++) {
+                      res += chars.charAt(Math.floor(Math.random() * chars.length));
+                    }
+                    return res;
+                  };
+
+                  let finalShortCode = shortCode.trim()
+                    ? shortCode.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-")
+                    : "";
+
+                  if (!finalShortCode) {
+                    if (editingShortLink) {
+                      const existingLink = shortLinks.find((l: any) => l.id === editingShortLink);
+                      finalShortCode = existingLink?.shortCode || generateRandomCode();
+                    } else {
+                      finalShortCode = generateRandomCode();
+                    }
+                  }
+
                   const data = {
-                    title: shortTitle.trim(),
-                    targetUrl: shortTargetUrl.trim(),
-                    shortCode: shortCode.trim(),
+                    title: shortTitle.trim() || finalShortCode,
+                    targetUrl: formattedTargetUrl,
+                    shortCode: finalShortCode,
                     monetized: shortMonetized,
                     seo: {
                       title: shortSeoTitle.trim(),
@@ -636,7 +696,10 @@ function DashboardView({ pages, shortLinks = [], onEdit, onViewAnalytics, onCrea
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-widest mb-2">Short Code custom</label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-bold uppercase tracking-widest">Short Code custom</label>
+                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest bg-gray-100 px-2 py-0.5 rounded">Opzionale</span>
+                    </div>
                     <div className="flex items-center border border-gray-200 rounded-xl bg-gray-50 overflow-hidden focus-within:border-black transition-all">
                       <span className="px-4 py-3 text-gray-500 font-medium">/s/</span>
                       <input 
@@ -644,10 +707,12 @@ function DashboardView({ pages, shortLinks = [], onEdit, onViewAnalytics, onCrea
                         value={shortCode}
                         onChange={(e) => setShortCode(e.target.value)}
                         className="w-full py-3 pr-4 bg-transparent outline-none font-bold"
-                        placeholder="il-mio-link"
-                        required
+                        placeholder="il-mio-link (lascia vuoto per generare casuale)"
                       />
                     </div>
+                    <p className="text-[11px] text-gray-500 mt-1.5">
+                      Non obbligatorio: se lasciato vuoto, verrà generato automaticamente un codice breve casuale.
+                    </p>
                   </div>
                   <label className="flex items-center gap-3 p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-black transition-colors">
                     <input 
@@ -687,14 +752,57 @@ function DashboardView({ pages, shortLinks = [], onEdit, onViewAnalytics, onCrea
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-widest mb-1 text-gray-500">URL Immagine Social</label>
-                        <input 
-                          type="url" 
-                          value={shortSeoImage}
-                          onChange={(e) => setShortSeoImage(e.target.value)}
-                          className="w-full py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm focus:border-black transition-colors"
-                          placeholder="https://..."
-                        />
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500">Immagine Social (URL o Carica)</label>
+                          {shortSeoImage && (
+                            <button
+                              type="button"
+                              onClick={() => setShortSeoImage("")}
+                              className="text-[10px] text-red-500 hover:text-red-700 font-bold uppercase tracking-wider flex items-center gap-1"
+                            >
+                              <X className="w-3 h-3" /> Rimuovi
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="text" 
+                            value={shortSeoImage}
+                            onChange={(e) => setShortSeoImage(e.target.value)}
+                            className="flex-1 py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg outline-none text-sm focus:border-black transition-colors"
+                            placeholder="https://... oppure carica da dispositivo"
+                          />
+                          <label className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-black hover:text-white text-black text-xs font-bold rounded-lg cursor-pointer transition-all shrink-0 border border-gray-200">
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>Carica</span>
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              className="hidden" 
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  compressAndLoadImage(file, (dataUrl) => {
+                                    setShortSeoImage(dataUrl);
+                                  });
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                        {shortSeoImage && (
+                          <div className="mt-2 relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50 max-h-36 flex items-center justify-center">
+                            <img 
+                              src={shortSeoImage} 
+                              alt="Social Preview" 
+                              className="w-full h-36 object-cover"
+                              onError={(e) => (e.currentTarget.style.display = "none")}
+                            />
+                          </div>
+                        )}
+                        <p className="text-[10px] text-gray-400 mt-1">
+                          Mostrata nelle anteprime di WhatsApp, Telegram, Facebook e Twitter/X.
+                        </p>
                       </div>
                     </div>
                   </div>
