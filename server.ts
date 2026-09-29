@@ -250,26 +250,27 @@ async function startServer() {
       let data: any = null;
       let fallbackReason: string | null = null;
 
-      // 1. If apiKey is provided, attempt v4 query
+      // 1. If apiKey is provided, attempt v4 query on search.api.careerjet.net
       if (apiKey && typeof apiKey === "string" && apiKey.trim().length > 0) {
         try {
-          const v4Url = `https://api.careerjet.net/v4/query?locale_code=it_IT&keywords=${encodeURIComponent((keywords as string) || "")}&location=${encodeURIComponent((location as string) || "")}&affid=${affid}&user_ip=${encodeURIComponent(userIp)}&user_agent=${encodeURIComponent(userAgent)}`;
+          const v4Url = `https://search.api.careerjet.net/v4/query?locale_code=it_IT&keywords=${encodeURIComponent((keywords as string) || "")}&location=${encodeURIComponent((location as string) || "")}&affid=${affid}&user_ip=${encodeURIComponent(userIp)}&user_agent=${encodeURIComponent(userAgent)}`;
           const v4Res = await fetch(v4Url, {
             headers: {
-              'Referer': 'https://example.com',
-              'Authorization': 'Basic ' + Buffer.from(apiKey.trim() + ":").toString("base64")
+              "Referer": "https://example.com",
+              "Authorization": "Basic " + Buffer.from(apiKey.trim() + ":").toString("base64")
             }
           });
           const v4Data = await v4Res.json().catch(() => null);
           if (v4Res.ok && v4Data && Array.isArray(v4Data.jobs) && v4Data.jobs.length > 0) {
             data = v4Data;
           } else {
-            fallbackReason = v4Data?.error || `Status ${v4Res.status}`;
-            console.warn(`[Careerjet] v4 query failed (${fallbackReason}), seamlessly using public search endpoint.`);
+            const errObj = v4Data?.error;
+            fallbackReason = typeof errObj === "object" && errObj !== null 
+              ? (errObj.message || JSON.stringify(errObj))
+              : (typeof errObj === "string" ? errObj : `Status ${v4Res.status}`);
           }
         } catch (v4Err: any) {
           fallbackReason = v4Err?.message || "v4 fetch error";
-          console.warn("[Careerjet] v4 query exception, using public search endpoint:", v4Err?.message);
         }
       }
 
@@ -279,18 +280,16 @@ async function startServer() {
           const publicUrl = `http://public.api.careerjet.net/search?locale_code=it_IT&keywords=${encodeURIComponent((keywords as string) || "")}&location=${encodeURIComponent((location as string) || "")}&affid=${affid}&user_ip=${encodeURIComponent(userIp)}&user_agent=${encodeURIComponent(userAgent)}`;
           const publicRes = await fetch(publicUrl, {
             headers: {
-              'Referer': 'https://example.com'
+              "Referer": "https://example.com"
             }
           });
           const publicData = await publicRes.json().catch(() => null);
           if (publicRes.ok && publicData && Array.isArray(publicData.jobs)) {
             data = publicData;
           } else {
-            console.warn("[Careerjet] Public search did not return jobs:", publicData?.error || publicRes.statusText);
             data = publicData || { jobs: [] };
           }
         } catch (pubErr: any) {
-          console.warn("[Careerjet] Public search exception:", pubErr?.message);
           data = { jobs: [] };
         }
       }
@@ -305,10 +304,8 @@ async function startServer() {
       if (fallbackReason) {
         data.notice = `Risultati caricati via API pubblica (v4: ${fallbackReason})`;
       }
-
       res.json(data);
     } catch (error: any) {
-      console.warn("[Careerjet] Gracefully handled error:", error?.message);
       res.json({ jobs: [], error: error?.message || "Failed to fetch jobs" });
     }
   });
@@ -446,10 +443,73 @@ async function startServer() {
         } catch(e) {}
       }
 
+      let siteName = $('meta[property="og:site_name"]').attr('content') || '';
+      if (!siteName) {
+        try {
+          siteName = new URL(url).hostname.replace(/^www\./, '');
+        } catch(e) {}
+      }
+
+      let author = $('meta[name="author"]').attr('content') ||
+                   $('meta[property="article:author"]').attr('content') ||
+                   $('meta[name="twitter:creator"]').attr('content') ||
+                   $('[rel="author"]').first().text() ||
+                   $('.author').first().text() ||
+                   '';
+
+      let articleText = '';
+      $('script[type="application/ld+json"]').each((i, el) => {
+        try {
+          const data = JSON.parse($(el).html());
+          const items = Array.isArray(data) ? data : [data];
+          for (const item of items) {
+            if (item.articleBody && !articleText) {
+              articleText = item.articleBody;
+            }
+            if (item.author && !author) {
+              if (typeof item.author === 'string') author = item.author;
+              else if (item.author.name) author = item.author.name;
+            }
+            if (item.publisher?.name && !siteName) {
+              siteName = item.publisher.name;
+            }
+          }
+        } catch(e) {}
+      });
+
+      if (!articleText) {
+        const clone$ = cheerio.load(html);
+        clone$('script, style, nav, header, footer, noscript, aside, form, svg, iframe, .ads, .comment, .cookie').remove();
+        
+        const paragraphs = [];
+        clone$('article p, main p, .article-body p, .article-content p, .post-content p, .entry-content p, p').each((_, el) => {
+          const pText = clone$(el).text().trim();
+          if (pText.length > 50 && !pText.toLowerCase().includes('cookie') && !pText.toLowerCase().includes('privacy policy')) {
+            paragraphs.push(pText);
+          }
+        });
+
+        if (paragraphs.length > 0) {
+          articleText = paragraphs.slice(0, 5).join('\n\n');
+        } else if (description) {
+          articleText = description;
+        }
+      }
+
+      let markdownContent = articleText ? articleText.trim() : (description || title);
+      const sourceCredit = siteName ? `\n\n---\n*Fonte: [${siteName}](${url})*` : `\n\n---\n*Fonte: [Leggi l\'articolo originale](${url})*`;
+      if (!markdownContent.includes(url)) {
+        markdownContent += sourceCredit;
+      }
+
       res.json({
         title: title.trim(),
         description: description.trim(),
         image: image.trim(),
+        content: markdownContent.trim(),
+        author: author.trim(),
+        siteName: siteName.trim(),
+        url
       });
     } catch (error: any) {
       console.error('Scraping error:', error);

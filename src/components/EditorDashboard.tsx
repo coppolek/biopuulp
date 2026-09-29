@@ -1,8 +1,10 @@
+import Markdown from "react-markdown";
+import { compressImageFile } from "../lib/imageUtils";
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import { BioPage, BioLink, BioModule, PageAnalytics } from '../types';
 import PublicBioPage from './PublicBioPage';
-import { CheckCircle2, Loader2, Globe, Settings, Eye, Layout, Link as LinkIcon, DollarSign, PenTool, Share2, Users, ChevronLeft, GripVertical, Plus, BarChart3, Mail, Download , ShoppingCart, Youtube, Bold, Italic, Type, Quote, Link2, Palette, Image as ImageIcon, Smile, Folder, Briefcase, Upload, X } from 'lucide-react';
+import { CheckCircle2, Loader2, Globe, Settings, Eye, Layout, Link as LinkIcon, DollarSign, Newspaper, PenTool, Share2, Users, ChevronLeft, GripVertical, Plus, BarChart3, Mail, Download , ShoppingCart, Youtube, Bold, Italic, Type, Quote, Link2, Palette, Image as ImageIcon, Smile, Folder, Briefcase, Upload, X } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { getPageAnalytics, getPageSubscribers } from '../lib/db';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -350,34 +352,15 @@ function SeoEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage) 
                 type="file" 
                 accept="image/*" 
                 className="hidden" 
-                onChange={(e) => {
+                onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      const img = document.createElement("img");
-                      img.onload = () => {
-                        const canvas = document.createElement("canvas");
-                        const maxDim = 1200;
-                        let w = img.width;
-                        let h = img.height;
-                        if (w > maxDim || h > maxDim) {
-                          if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
-                          else { w = Math.round((w * maxDim) / h); h = maxDim; }
-                        }
-                        canvas.width = w;
-                        canvas.height = h;
-                        const ctx = canvas.getContext("2d");
-                        if (ctx) {
-                          ctx.drawImage(img, 0, 0, w, h);
-                          updateSeo({ imageUrl: canvas.toDataURL("image/jpeg", 0.85) });
-                        } else {
-                          updateSeo({ imageUrl: reader.result as string });
-                        }
-                      };
-                      img.src = reader.result as string;
-                    };
-                    reader.readAsDataURL(file);
+                    try {
+                      const compressed = await compressImageFile(file, 640, 0.75);
+                      updateSeo({ imageUrl: compressed });
+                    } catch (err) {
+                      toast.error("Errore nel caricamento dell'immagine SEO");
+                    }
                   }
                 }}
               />
@@ -473,39 +456,59 @@ const SortableLinkItem: React.FC<{
                       placeholder="URL"
                     />
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <button 
-                      disabled={idx === 0}
+                  <div className="flex flex-col gap-1 items-end">
+                    <button
+                      type="button"
+                      title="Monetizza link cartella (annuncio 5s)"
                       onClick={() => {
                         const newChildren = [...(link.children || [])];
-                        const temp = newChildren[idx - 1];
-                        newChildren[idx - 1] = newChildren[idx];
-                        newChildren[idx] = temp;
+                        newChildren[idx] = { ...newChildren[idx], monetized: !newChildren[idx].monetized };
                         const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: newChildren } : l);
                         setPage({ ...page, links: newLinks });
                       }}
-                      className="text-gray-400 hover:text-black disabled:opacity-30"
-                    >↑</button>
-                    <button 
-                      disabled={idx === (link.children?.length || 0) - 1}
-                      onClick={() => {
-                        const newChildren = [...(link.children || [])];
-                        const temp = newChildren[idx + 1];
-                        newChildren[idx + 1] = newChildren[idx];
-                        newChildren[idx] = temp;
-                        const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: newChildren } : l);
-                        setPage({ ...page, links: newLinks });
-                      }}
-                      className="text-gray-400 hover:text-black disabled:opacity-30"
-                    >↓</button>
-                    <button 
-                      onClick={() => {
-                        const newChildren = (link.children || []).filter(c => c.id !== child.id);
-                        const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: newChildren } : l);
-                        setPage({ ...page, links: newLinks });
-                      }}
-                      className="text-red-400 hover:text-red-600"
-                    >×</button>
+                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 border transition-all cursor-pointer ${
+                        (child.monetized || page.monetizeAllLinks)
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold"
+                          : "bg-gray-50 text-gray-400 border-gray-200 hover:text-black"
+                      }`}
+                    >
+                      <DollarSign className="w-2.5 h-2.5" />
+                      {(child.monetized || page.monetizeAllLinks) ? "Ad 5s" : "Monetizza"}
+                    </button>
+                    <div className="flex gap-1">
+                      <button 
+                        disabled={idx === 0}
+                        onClick={() => {
+                          const newChildren = [...(link.children || [])];
+                          const temp = newChildren[idx - 1];
+                          newChildren[idx - 1] = newChildren[idx];
+                          newChildren[idx] = temp;
+                          const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: newChildren } : l);
+                          setPage({ ...page, links: newLinks });
+                        }}
+                        className="text-gray-400 hover:text-black disabled:opacity-30"
+                      >↑</button>
+                      <button 
+                        disabled={idx === (link.children?.length || 0) - 1}
+                        onClick={() => {
+                          const newChildren = [...(link.children || [])];
+                          const temp = newChildren[idx + 1];
+                          newChildren[idx + 1] = newChildren[idx];
+                          newChildren[idx] = temp;
+                          const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: newChildren } : l);
+                          setPage({ ...page, links: newLinks });
+                        }}
+                        className="text-gray-400 hover:text-black disabled:opacity-30"
+                      >↓</button>
+                      <button 
+                        onClick={() => {
+                          const newChildren = (link.children || []).filter(c => c.id !== child.id);
+                          const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: newChildren } : l);
+                          setPage({ ...page, links: newLinks });
+                        }}
+                        className="text-red-400 hover:text-red-600"
+                      >×</button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -557,15 +560,16 @@ const SortableLinkItem: React.FC<{
               type="file" 
               accept="image/*"
               className="hidden"
-              onChange={(e) => {
+              onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (file) {
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    const newLinks = page.links.map(l => l.id === link.id ? { ...l, image: reader.result as string } : l);
+                  try {
+                    const compressed = await compressImageFile(file, 320, 0.75);
+                    const newLinks = page.links.map(l => l.id === link.id ? { ...l, image: compressed } : l);
                     setPage({ ...page, links: newLinks });
-                  };
-                  reader.readAsDataURL(file);
+                  } catch (err) {
+                    toast.error("Errore nel caricamento dell'immagine");
+                  }
                 }
               }}
             />
@@ -628,11 +632,27 @@ const SortableLinkItem: React.FC<{
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex items-center gap-2 pt-1 flex-wrap">
           <span className="text-[10px] font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded flex items-center gap-1">
             {scrapingId === link.id && <span className="w-2 h-2 rounded-full bg-black animate-pulse"></span>}
             {link.clicks || 0} CLICK
           </span>
+          <button
+            type="button"
+            onClick={() => {
+              const newLinks = page.links.map(l => l.id === link.id ? { ...l, monetized: !l.monetized } : l);
+              setPage({ ...page, links: newLinks });
+            }}
+            className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 border transition-all cursor-pointer ${
+              (link.monetized || page.monetizeAllLinks)
+                ? "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold"
+                : "bg-gray-50 text-gray-400 border-gray-200 hover:text-black hover:border-gray-300"
+            }`}
+            title="Mostra annuncio sponsorizzato da 5s prima del reindirizzamento"
+          >
+            <DollarSign className="w-3 h-3" />
+            {(link.monetized || page.monetizeAllLinks) ? "Monetizzato (5s Ad)" : "Monetizza"}
+          </button>
           {link.tags?.map(tag => (
             <span key={tag} className="text-[10px] font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded uppercase tracking-wider">
               {tag}
@@ -655,6 +675,48 @@ const SortableLinkItem: React.FC<{
 
 function LinksEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage) => void }) {
   const [scrapingId, setScrapingId] = useState<string | null>(null);
+  const [showArticlePrompt, setShowArticlePrompt] = useState(false);
+  const [articlePromptUrl, setArticlePromptUrl] = useState('');
+  const [isImportingArticle, setIsImportingArticle] = useState(false);
+
+  const handleImportArticleLink = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const url = articlePromptUrl.trim();
+    if (!url) return;
+    setIsImportingArticle(true);
+    try {
+      const res = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newLink: BioLink = {
+          id: Date.now().toString(),
+          title: data.title || 'Nuovo Articolo',
+          description: data.description || '',
+          url: url.startsWith('http') ? url : `https://${url}`,
+          image: data.image || '',
+          link_type: 'standard',
+          tags: ['Articolo', data.siteName].filter(Boolean) as string[],
+          clicks: 0,
+          monetized: page.monetizeAllLinks || false
+        };
+        setPage({ ...page, links: [newLink, ...page.links] });
+        setArticlePromptUrl('');
+        setShowArticlePrompt(false);
+        toast.success('Articolo aggiunto ai link con scraping!');
+      } else {
+        toast.error('Impossibile estrarre i dati dell\'articolo.');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Errore durante lo scraping dell\'articolo.');
+    } finally {
+      setIsImportingArticle(false);
+    }
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -727,6 +789,56 @@ function LinksEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage
         <p className="text-gray-500 text-sm">Aggiungi, modifica e riordina i tuoi link. Non c'è limite al numero di link che puoi aggiungere.</p>
       </div>
 
+      {/* Bio Site Link Monetization Box */}
+      <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50/60 border border-emerald-200 rounded-2xl p-4 sm:p-5 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                <DollarSign className="w-4 h-4" />
+              </div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-emerald-950">
+                Monetizzazione Link Bio Site
+              </h3>
+              {page.monetizeAllLinks ? (
+                <span className="text-[9px] font-black uppercase tracking-widest bg-emerald-600 text-white px-2 py-0.5 rounded-full">
+                  Attiva su tutti
+                </span>
+              ) : (
+                <span className="text-[9px] font-bold uppercase tracking-widest bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                  Configurabile per link
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-emerald-800/80 leading-relaxed max-w-xl">
+              Mostra annunci sponsorizzati (interstitial di 5 secondi con conto alla rovescia) prima dell'apertura dei link per monetizzare le visite al tuo Bio Site.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const newValue = !page.monetizeAllLinks;
+                const newLinks = page.links.map(l => ({
+                  ...l,
+                  monetized: newValue,
+                  children: l.children?.map(c => ({ ...c, monetized: newValue }))
+                }));
+                setPage({ ...page, monetizeAllLinks: newValue, links: newLinks });
+              }}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-xs flex items-center gap-1.5 cursor-pointer ${
+                page.monetizeAllLinks
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-white border border-emerald-300 text-emerald-900 hover:bg-emerald-50"
+              }`}
+            >
+              <DollarSign className="w-3.5 h-3.5" />
+              {page.monetizeAllLinks ? "Tutti Monetizzati ✓" : "Monetizza Tutti i Link"}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div>
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xs font-black uppercase tracking-widest">Aggregatore Link</h3>
@@ -756,8 +868,53 @@ function LinksEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage
             </SortableContext>
           </div>
         </DndContext>
+        {showArticlePrompt && (
+          <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 mt-3 mb-2 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Newspaper className="w-4 h-4 text-indigo-600" />
+                <span className="text-xs font-black uppercase tracking-wider text-indigo-950">Inserisci Articolo da Link (Scraping)</span>
+              </div>
+              <button type="button" onClick={() => setShowArticlePrompt(false)} className="text-gray-400 hover:text-black">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleImportArticleLink} className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="url"
+                value={articlePromptUrl}
+                onChange={e => setArticlePromptUrl(e.target.value)}
+                placeholder="Incolla l'URL dell'articolo (es. https://ansa.it/...)"
+                className="flex-1 px-3.5 py-2.5 bg-white border border-indigo-200 rounded-xl text-xs font-medium outline-none focus:border-indigo-600"
+                disabled={isImportingArticle}
+                autoFocus
+              />
+              <button
+                type="submit"
+                disabled={isImportingArticle || !articlePromptUrl.trim()}
+                className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                {isImportingArticle ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Newspaper className="w-3.5 h-3.5" />}
+                <span>{isImportingArticle ? "Scraping..." : "Estrai & Aggiungi"}</span>
+              </button>
+            </form>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4">
           <button 
+            type="button"
+            onClick={() => setShowArticlePrompt(!showArticlePrompt)}
+            className="w-full py-4 border-2 border-indigo-100 bg-indigo-50/30 rounded-2xl flex flex-col items-center justify-center gap-2 text-indigo-950 hover:border-indigo-600 transition-all group"
+          >
+            <div className="w-8 h-8 rounded-full bg-indigo-100 group-hover:bg-indigo-600 group-hover:text-white flex items-center justify-center transition-colors text-indigo-700">
+              <Newspaper className="w-4 h-4" />
+            </div>
+            <span className="font-bold text-[10px] uppercase tracking-widest text-center">Articolo Web</span>
+          </button>
+
+          <button 
+            type="button"
             onClick={() => {
               const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'standard' as const, clicks: 0 };
               setPage({ ...page, links: [...page.links, newLink] });
@@ -1025,6 +1182,55 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
   const [showSeo, setShowSeo] = useState(false);
   const [showCode, setShowCode] = useState(false);
 
+  const [scrapeArticleUrl, setScrapeArticleUrl] = useState('');
+  const [isScrapingArticle, setIsScrapingArticle] = useState(false);
+  const [previewTab, setPreviewTab] = useState<'write' | 'preview'>('write');
+
+  const handleScrapeArticle = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const targetUrl = scrapeArticleUrl.trim();
+    if (!targetUrl) {
+      toast.error('Inserisci l\'URL di un articolo da estrarre');
+      return;
+    }
+
+    setIsScrapingArticle(true);
+    try {
+      const res = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: targetUrl })
+      });
+
+      if (!res.ok) {
+        throw new Error('Errore durante lo scraping dell\'articolo');
+      }
+
+      const data = await res.json();
+      if (!data.title && !data.description && !data.content) {
+        toast.error('Nessun dato trovato per questo articolo');
+        return;
+      }
+
+      setTitle(data.title || '');
+      setContent(data.content || data.description || '');
+      if (data.image) setImageUrl(data.image);
+      if (data.title) setSeoTitle(data.title);
+      if (data.description) setSeoDescription(data.description);
+      if (data.title || data.description) setShowSeo(true);
+
+      toast.success('Articolo estratto con successo tramite scraping!');
+      setScrapeArticleUrl('');
+      const form = document.getElementById('microblog-form');
+      if (form) form.scrollIntoView({ behavior: 'smooth' });
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Impossibile estrarre l\'articolo dal link');
+    } finally {
+      setIsScrapingArticle(false);
+    }
+  };
+
   const insertFormat = (format: string) => {
     const textarea = document.getElementById('microblog-textarea') as HTMLTextAreaElement;
     if (!textarea) return;
@@ -1113,18 +1319,115 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div>
-        <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-2">Micro-Blog & Contenuti</h2>
-        <p className="text-gray-500 text-sm">Condividi mini-saggi, pensieri o embed di video TikTok per non sovraccaricare il pubblico.</p>
+        <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-2">Micro-Blog & Articoli</h2>
+        <p className="text-gray-500 text-sm">Pubblica articoli, mini-saggi, notizie o embed per i visitatori della tua pagina.</p>
       </div>
 
-      <div id="microblog-form" className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
-        <input 
-          type="text" 
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-          placeholder="Titolo della Storia..." 
-          className="w-full bg-transparent border-b border-gray-200 py-2 font-bold mb-4 focus:outline-none focus:border-black" 
-        />
+      {/* Box Inserisci Articolo da Link tramite Scraping */}
+      <div className="bg-gradient-to-r from-blue-50/80 via-indigo-50/60 to-purple-50/40 border border-indigo-200 rounded-2xl p-5 shadow-xs">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+            <Newspaper className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-wider text-indigo-950">
+              Inserisci Articolo da Link (Scraping Automatico)
+            </h3>
+            <p className="text-[11px] text-indigo-800/80">
+              Incolla il link di qualsiasi notizia o blog: estraiamo automaticamente titolo, testo completo dell\'articolo, copertina e crediti.
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleScrapeArticle} className="mt-3 flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <input
+              type="url"
+              value={scrapeArticleUrl}
+              onChange={e => setScrapeArticleUrl(e.target.value)}
+              placeholder="Incolla URL articolo (es. https://ansa.it/... o https://medium.com/...)"
+              className="w-full pl-4 pr-10 py-2.5 bg-white border border-indigo-200 rounded-xl text-xs font-medium outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition-all placeholder:text-gray-400"
+              disabled={isScrapingArticle}
+            />
+            {scrapeArticleUrl && (
+              <button
+                type="button"
+                onClick={() => setScrapeArticleUrl('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={isScrapingArticle || !scrapeArticleUrl.trim()}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+          >
+            {isScrapingArticle ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Estrazione in corso...</span>
+              </>
+            ) : (
+              <>
+                <Newspaper className="w-4 h-4" />
+                <span>Estrai Articolo</span>
+              </>
+            )}
+          </button>
+        </form>
+      </div>
+
+      <div id="microblog-form" className="p-5 bg-gray-50 rounded-2xl border border-gray-200/80 shadow-xs">
+        <div className="flex items-center justify-between gap-2 mb-4 pb-3 border-b border-gray-200">
+          <input 
+            type="text" 
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Titolo dell'Articolo o Storia..." 
+            className="flex-1 bg-transparent font-black text-lg outline-none placeholder:text-gray-400" 
+          />
+          <div className="flex items-center bg-gray-200/80 p-0.5 rounded-xl shrink-0">
+            <button
+              type="button"
+              onClick={() => setPreviewTab('write')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${previewTab === 'write' ? 'bg-white text-black shadow-xs' : 'text-gray-500 hover:text-black'}`}
+            >
+              Scrivi
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreviewTab('preview')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${previewTab === 'preview' ? 'bg-white text-black shadow-xs' : 'text-gray-500 hover:text-black'}`}
+            >
+              Anteprima
+            </button>
+          </div>
+        </div>
+
+        {previewTab === 'preview' ? (
+          <div className="bg-white rounded-2xl p-5 border border-gray-200 mb-4 space-y-4">
+            {imageUrl && (
+              <div className="aspect-[16/9] w-full rounded-xl overflow-hidden bg-gray-100">
+                <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="flex items-center gap-2 text-[10px] font-medium text-gray-400">
+              <span className="font-bold uppercase tracking-wider text-indigo-600">Articolo</span>
+              <span>·</span>
+              <span>Oggi</span>
+              <span>·</span>
+              <span>{Math.max(1, Math.ceil((content.trim().split(/\s+/).filter(Boolean).length) / 180))} min lettura</span>
+            </div>
+            <h3 className="text-xl font-black text-gray-900 leading-snug">{title || "Titolo dell'articolo"}</h3>
+            <div className="text-sm leading-relaxed text-gray-700 prose prose-sm max-w-none">
+              <Markdown>{content || "*Nessun contenuto scritto finora...*"}</Markdown>
+            </div>
+          </div>
+        ) : null}
+
+        <div className={previewTab === 'preview' ? 'hidden' : 'block'}>
         <div className="flex items-center gap-1 mb-2 border-b border-gray-100 pb-2 overflow-x-auto">
           <button type="button" onClick={() => insertFormat('bold')} className="p-1.5 text-gray-500 hover:text-black hover:bg-gray-200 rounded-md transition-colors" title="Grassetto"><Bold className="w-4 h-4" /></button>
           <button type="button" onClick={() => insertFormat('italic')} className="p-1.5 text-gray-500 hover:text-black hover:bg-gray-200 rounded-md transition-colors" title="Corsivo"><Italic className="w-4 h-4" /></button>
@@ -1216,14 +1519,15 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
                 type="file" 
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => {
+                onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      setImageUrl(reader.result as string);
-                    };
-                    reader.readAsDataURL(file);
+                    try {
+                      const compressed = await compressImageFile(file, 640, 0.75);
+                      setImageUrl(compressed);
+                    } catch (err) {
+                      toast.error("Errore nel caricamento dell'immagine");
+                    }
                   }
                 }}
               />
@@ -1238,6 +1542,10 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
+                    if (file.size > 300 * 1024) {
+                      toast.error("File video troppo grande per l'archiviazione diretta. Usa un link YouTube/TikTok o codice embed.");
+                      return;
+                    }
                     const reader = new FileReader();
                     reader.onloadend = () => {
                       setVideoUrl(reader.result as string);
@@ -1262,8 +1570,15 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
               <span>Codice</span>
             </button>
           </div>
-          <div className="flex items-center justify-end gap-3 w-full sm:w-auto">
-            <span className="text-[10px] font-mono text-gray-400">{content.length} / 500</span>
+        </div>
+        </div>
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-gray-200 mt-2">
+          <div className="text-xs text-gray-500 font-medium">
+            <span>{content.trim().split(/\s+/).filter(Boolean).length} parole</span>
+            <span className="mx-1.5 opacity-40">·</span>
+            <span>~{Math.max(1, Math.ceil(content.trim().split(/\s+/).filter(Boolean).length / 180))} min lettura</span>
+          </div>
+          <div className="flex items-center justify-end gap-2 w-full sm:w-auto">
             <button 
               onClick={handlePost}
               className="px-6 py-2 bg-black text-white text-xs font-bold rounded-lg uppercase tracking-widest hover:opacity-90 w-full sm:w-auto"
@@ -1291,32 +1606,64 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
       </div>
       {page.modules && page.modules.filter(m => m.type === 'microblog').length > 0 && (
         <div className="mt-12 space-y-4">
-          <h3 className="font-bold uppercase tracking-widest text-xs text-gray-500 mb-4">Post Pubblicati</h3>
-          {page.modules.filter(m => m.type === 'microblog').map((m: any) => (
-            <div key={m.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between group">
-              <div>
-                <h4 className="font-black italic text-lg">{m.title}</h4>
-                <p className="text-gray-500 text-xs truncate max-w-sm mt-1">{m.content.substring(0, 100)}...</p>
-                <div className="text-[10px] text-gray-400 mt-2 font-mono">{new Date(m.date).toLocaleDateString()}</div>
-              </div>
-              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button 
-                  onClick={() => handleEdit(m)}
-                  className="p-2 bg-gray-100 hover:bg-gray-200 text-black rounded-lg transition-colors"
-                  title="Modifica"
+          <div className="flex items-center justify-between">
+            <h3 className="font-black uppercase tracking-widest text-xs text-gray-500">
+              Articoli Pubblicati ({page.modules.filter(m => m.type === 'microblog').length})
+            </h3>
+          </div>
+          <div className="grid gap-3">
+            {page.modules.filter(m => m.type === 'microblog').map((m: any) => {
+              const words = (m.content || '').trim().split(/\s+/).filter(Boolean).length;
+              const readTime = Math.max(1, Math.ceil(words / 180));
+              return (
+                <div 
+                  key={m.id} 
+                  className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs hover:shadow-sm transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group"
                 >
-                  <PenTool className="w-4 h-4" />
-                </button>
-                <button 
-                  onClick={() => handleDelete(m.id)}
-                  className="p-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg transition-colors"
-                  title="Elimina"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))}
+                  <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                    {m.imageUrl ? (
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden shrink-0 border border-gray-100 bg-gray-50">
+                        <img src={m.imageUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      </div>
+                    ) : (
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl shrink-0 bg-indigo-50 text-indigo-500 flex items-center justify-center font-bold text-xs">
+                        <Newspaper className="w-6 h-6 opacity-70" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 text-[10px] font-medium text-gray-400 mb-1">
+                        <span>{new Date(m.date || Date.now()).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        <span>·</span>
+                        <span>{readTime} min lettura</span>
+                        <span>·</span>
+                        <span>{words} parole</span>
+                      </div>
+                      <h4 className="font-bold text-base text-gray-900 truncate leading-snug">{m.title}</h4>
+                      <p className="text-gray-500 text-xs line-clamp-2 mt-1 leading-relaxed">{m.content.replace(/[#*`_]/g, '')}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                    <button 
+                      onClick={() => handleEdit(m)}
+                      className="px-3.5 py-2 bg-gray-100 hover:bg-black hover:text-white text-gray-700 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      title="Modifica articolo"
+                    >
+                      <PenTool className="w-3.5 h-3.5" />
+                      <span>Modifica</span>
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(m.id)}
+                      className="p-2 bg-red-50 hover:bg-red-500 hover:text-white text-red-500 rounded-xl transition-all cursor-pointer"
+                      title="Elimina articolo"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -1438,14 +1785,15 @@ function SettingsEditor({ page, setPage }: { page: BioPage, setPage: (page: BioP
               type="file" 
               accept="image/*"
               className="hidden"
-              onChange={(e) => {
+              onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (file) {
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    updateProfile({ avatarUrl: reader.result as string });
-                  };
-                  reader.readAsDataURL(file);
+                  try {
+                    const compressed = await compressImageFile(file, 256, 0.75);
+                    updateProfile({ avatarUrl: compressed });
+                  } catch (err) {
+                    toast.error("Errore nel caricamento della foto profilo");
+                  }
                 }
               }}
             />
@@ -1491,6 +1839,37 @@ function SettingsEditor({ page, setPage }: { page: BioPage, setPage: (page: BioP
               <option value="es">Español</option>
             </select>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm mt-8 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+              <DollarSign className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold tracking-tight text-gray-900">Monetizzazione Link Bio Site</h3>
+              <p className="text-xs text-gray-500">Mostra un annuncio sponsorizzato da 5 secondi prima del reindirizzamento dei link</p>
+            </div>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input 
+              type="checkbox" 
+              checked={page.monetizeAllLinks || false}
+              onChange={e => {
+                const checked = e.target.checked;
+                const newLinks = page.links.map(l => ({
+                  ...l,
+                  monetized: checked,
+                  children: l.children?.map(c => ({ ...c, monetized: checked }))
+                }));
+                setPage({ ...page, monetizeAllLinks: checked, links: newLinks });
+              }}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+          </label>
         </div>
       </div>
 

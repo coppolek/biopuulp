@@ -126,16 +126,16 @@ function AppDashboard() {
     setSaveStatus('saving');
         
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
-      savePage({ ...updatedPage, userId: user.uid })
-        .then(() => {
-          setSaveStatus('saved');
-          setTimeout(() => setSaveStatus('idle'), 2000);
-        })
-        .catch(err => {
-          console.error("Save error:", err);
-          setSaveStatus('idle');
-        });
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await savePage({ ...updatedPage, userId: user.uid });
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch (err: any) {
+        console.error("Save error:", err);
+        setSaveStatus('idle');
+        toast.error("Errore di salvataggio: " + (err?.message || "Riprova"));
+      }
     }, 1000);
   };
 

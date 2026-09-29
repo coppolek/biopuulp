@@ -10,6 +10,7 @@ export type BioLink = {
   link_type?: 'standard' | 'youtube' | 'spotify' | 'amazon' | 'folder';
   children?: BioLink[];
   price?: string;
+  monetized?: boolean;
 };
 
 export type SocialLink = {
@@ -75,16 +76,13 @@ export type AppBanner = {
   type: BannerType;
   position: 'top' | 'bottom' | 'short_url';
   active: boolean;
-  
   // For image banners
   imageUrl?: string;
   linkUrl?: string;
-  
   // For text banners
   text?: string;
   textColor?: string;
   backgroundColor?: string;
-
   // For code banners
   code?: string;
 };
@@ -102,6 +100,7 @@ export type BioPage = {
   views: number;
   language?: 'it' | 'en' | 'es';
   layoutOrder?: string[];
+  monetizeAllLinks?: boolean;
   seo?: {
     title?: string;
     description?: string;

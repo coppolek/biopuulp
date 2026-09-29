@@ -1,3 +1,4 @@
+import { compressDataUrl } from "./imageUtils";
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, deleteDoc, increment, addDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { BioPage, UserAccount, PageAnalytics, DailyStats, AppBanner } from '../types';
@@ -146,10 +147,25 @@ export const trackLinkClick = async (pageId: string, linkId: string): Promise<vo
     
     if (pageSnap.exists()) {
       const pageData = pageSnap.data() as BioPage;
+      let updated = false;
       const linkIndex = pageData.links.findIndex(l => l.id === linkId);
       
       if (linkIndex >= 0) {
         pageData.links[linkIndex].clicks = (pageData.links[linkIndex].clicks || 0) + 1;
+        updated = true;
+      } else {
+        for (const l of pageData.links) {
+          if (l.children) {
+            const childIdx = l.children.findIndex(c => c.id === linkId);
+            if (childIdx >= 0) {
+              l.children[childIdx].clicks = (l.children[childIdx].clicks || 0) + 1;
+              updated = true;
+              break;
+            }
+          }
+        }
+      }
+      if (updated) {
         await setDoc(pageRef, pageData);
       }
     }
@@ -193,6 +209,44 @@ const cleanUndefined = (obj: any): any => {
 
 export const savePage = async (page: BioPage & { userId: string }): Promise<void> => {
   page = cleanUndefined(page);
+
+  // Guarantee that the document never exceeds Firestore's 1MB limit by compressing all data URLs
+  try {
+    if (page.profile?.avatarUrl && page.profile.avatarUrl.startsWith("data:image")) {
+      page.profile.avatarUrl = await compressDataUrl(page.profile.avatarUrl, 256, 0.75);
+    }
+    if (page.seo?.imageUrl && page.seo.imageUrl.startsWith("data:image")) {
+      page.seo.imageUrl = await compressDataUrl(page.seo.imageUrl, 640, 0.75);
+    }
+    if (Array.isArray(page.links)) {
+      for (const l of page.links) {
+        if (l.image && l.image.startsWith("data:image")) {
+          l.image = await compressDataUrl(l.image, 320, 0.75);
+        }
+        if (Array.isArray(l.children)) {
+          for (const c of l.children) {
+            if (c.image && c.image.startsWith("data:image")) {
+              c.image = await compressDataUrl(c.image, 320, 0.75);
+            }
+          }
+        }
+      }
+    }
+    if (Array.isArray(page.modules)) {
+      for (const m of page.modules) {
+        if ("imageUrl" in m && typeof (m as any).imageUrl === "string" && (m as any).imageUrl.startsWith("data:image")) {
+          (m as any).imageUrl = await compressDataUrl((m as any).imageUrl, 640, 0.75);
+        }
+        if ("videoUrl" in m && typeof (m as any).videoUrl === "string" && (m as any).videoUrl.startsWith("data:") && (m as any).videoUrl.length > 50000) {
+          console.warn("Oversized video base64 removed to protect document size");
+          (m as any).videoUrl = undefined;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Auto-compression during savePage caught error:", err);
+  }
+
   const pageRef = doc(db, 'pages', page.id);
   await setDoc(pageRef, page);
 };

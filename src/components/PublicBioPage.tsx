@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Instagram, Twitter, Youtube, Linkedin, Github, Facebook, Search, 
   ExternalLink, Coffee, Calendar, Download, Newspaper, SearchX, Mail, CheckCircle2
-, Folder } from 'lucide-react';
+, Folder, DollarSign, BookOpen, Clock, Share2, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
 import { subscribeToNewsletter, getAllBanners, trackLinkClick } from '../lib/db';
 
 const translations = {
@@ -114,12 +114,376 @@ const SocialIcon = ({ platform, className }: { platform: string, className?: str
   }
 };
 
+
+interface MicroblogArticleProps {
+  module: BioModule & {
+    title?: string;
+    content?: string;
+    imageUrl?: string;
+    videoUrl?: string;
+    embedCode?: string;
+    date?: string;
+    tags?: string[];
+    seo?: { title?: string; description?: string };
+  };
+  theme: BioPage["theme"];
+  lang?: "it" | "en" | "es";
+}
+
+const MicroblogArticleCard = ({ module, theme, lang = "it" }: MicroblogArticleProps) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showReaderModal, setShowReaderModal] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const customBg = module.tags?.[0]?.startsWith("#") ? module.tags[0] : null;
+  const isDarkCustomBg = customBg === "#1a1a1a";
+  const isLightCustomBg = customBg && customBg !== "#1a1a1a";
+
+  const content = module.content || "";
+  const wordCount = content.trim().split(/\s+/).filter(Boolean).length;
+  const readTimeMin = Math.max(1, Math.ceil(wordCount / 180));
+
+  const formattedDate = module.date
+    ? new Date(module.date).toLocaleDateString(
+        lang === "it" ? "it-IT" : lang === "es" ? "es-ES" : "en-US",
+        { day: "numeric", month: "short", year: "numeric" }
+      )
+    : null;
+
+  const isLong = content.length > 320 || content.split("\n").length > 4;
+
+  const handleShare = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const shareData = {
+      title: module.title || "Articolo",
+      text: module.title || "",
+      url: window.location.href
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (err) {}
+    }
+
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+
+  const markdownComponents = {
+    h1: ({ ...props }: any) => (
+      <h3 className="text-base sm:text-lg font-black tracking-tight mt-4 mb-2 text-current" {...props} />
+    ),
+    h2: ({ ...props }: any) => (
+      <h4 className="text-sm sm:text-base font-extrabold tracking-tight mt-3 mb-1.5 text-current" {...props} />
+    ),
+    h3: ({ ...props }: any) => (
+      <h5 className="text-xs sm:text-sm font-bold tracking-tight mt-2.5 mb-1 opacity-90 text-current" {...props} />
+    ),
+    p: ({ ...props }: any) => (
+      <p className="text-xs sm:text-[13px] leading-relaxed mb-3 last:mb-0 opacity-90 font-normal" {...props} />
+    ),
+    blockquote: ({ ...props }: any) => (
+      <blockquote
+        className="border-l-3 border-indigo-500/80 pl-3.5 py-1.5 my-3 italic text-xs sm:text-[13px] bg-black/[0.03] dark:bg-white/[0.04] rounded-r-xl"
+        {...props}
+      />
+    ),
+    ul: ({ ...props }: any) => (
+      <ul className="list-disc list-inside space-y-1.5 my-2.5 text-xs sm:text-[13px] opacity-90 pl-1" {...props} />
+    ),
+    ol: ({ ...props }: any) => (
+      <ol className="list-decimal list-inside space-y-1.5 my-2.5 text-xs sm:text-[13px] opacity-90 pl-1" {...props} />
+    ),
+    li: ({ ...props }: any) => <li className="leading-relaxed" {...props} />,
+    a: ({ href, children, ...props }: any) => (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="font-bold underline decoration-current/40 underline-offset-3 hover:decoration-current hover:text-indigo-600 transition-colors inline-flex items-center gap-1"
+        {...props}
+      >
+        <span>{children}</span>
+        <ExternalLink className="w-2.5 h-2.5 inline-block opacity-60" />
+      </a>
+    ),
+    strong: ({ ...props }: any) => <strong className="font-extrabold text-current" {...props} />,
+    code: ({ ...props }: any) => (
+      <code className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-mono text-[11px]" {...props} />
+    ),
+    hr: () => <hr className="my-4 border-current/15" />
+  };
+
+  return (
+    <>
+      <article
+        className={cn(
+          "group relative w-full text-left overflow-hidden transition-all duration-300",
+          "rounded-2xl border shadow-xs hover:shadow-md",
+          customBg
+            ? ""
+            : "bg-white/95 dark:bg-zinc-900/90 border-black/10 dark:border-white/10 text-neutral-900 dark:text-neutral-100 backdrop-blur-xs"
+        )}
+        style={{
+          backgroundColor: customBg || undefined,
+          color: isDarkCustomBg ? "#ffffff" : (isLightCustomBg ? "#1a1a1a" : undefined),
+          borderColor: customBg ? `${customBg}40` : undefined
+        }}
+      >
+        {/* Cover Hero Image */}
+        {module.imageUrl && (
+          <div className="relative w-full aspect-[16/9] sm:aspect-[2/1] overflow-hidden bg-neutral-100 dark:bg-neutral-800">
+            <img
+              src={module.imageUrl}
+              alt={module.title || "Copertina articolo"}
+              className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-500 ease-out"
+              loading="lazy"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none opacity-70" />
+            <div className="absolute bottom-2.5 left-3.5 flex items-center gap-1.5 text-[11px] font-medium text-white/95 drop-shadow-sm">
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>{readTimeMin} min di lettura</span>
+            </div>
+          </div>
+        )}
+
+        {/* Video Player */}
+        {module.videoUrl && (
+          <div className="w-full bg-black">
+            <video src={module.videoUrl} controls className="w-full max-h-96 object-cover" />
+          </div>
+        )}
+
+        {/* Embed Code */}
+        {module.embedCode && (
+          <div className="w-full overflow-hidden" dangerouslySetInnerHTML={{ __html: module.embedCode }} />
+        )}
+
+        {/* Content Container */}
+        <div className="p-4 sm:p-5">
+          {/* Metadata Bar */}
+          <div className="flex items-center justify-between gap-2 text-[11px] font-medium opacity-65 mb-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-bold uppercase tracking-wider text-[10px] flex items-center gap-1">
+                <Newspaper className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Articolo</span>
+              </span>
+              {formattedDate && (
+                <>
+                  <span aria-hidden="true" className="opacity-40">·</span>
+                  <span>{formattedDate}</span>
+                </>
+              )}
+              {!module.imageUrl && (
+                <>
+                  <span aria-hidden="true" className="opacity-40">·</span>
+                  <span>{readTimeMin} min lettura</span>
+                </>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleShare}
+              className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors flex items-center gap-1 text-[11px] cursor-pointer"
+              title="Condividi articolo"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-500" />
+                  <span className="text-[10px] text-emerald-600 font-bold">Copiato!</span>
+                </>
+              ) : (
+                <Share2 className="w-3.5 h-3.5 opacity-70 hover:opacity-100" />
+              )}
+            </button>
+          </div>
+
+          {/* Headline */}
+          {module.title && (
+            <h3 className="text-base sm:text-lg font-black tracking-tight leading-snug mb-3 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+              {module.title}
+            </h3>
+          )}
+
+          {/* Markdown Body */}
+          <div className="relative">
+            <div
+              className={cn(
+                "transition-all duration-300",
+                !isExpanded && isLong && "max-h-44 overflow-hidden"
+              )}
+            >
+              <Markdown components={markdownComponents}>
+                {content}
+              </Markdown>
+            </div>
+
+            {/* Gradient mask when collapsed */}
+            {!isExpanded && isLong && (
+              <div
+                className="absolute bottom-0 inset-x-0 h-20 pointer-events-none"
+                style={{
+                  background: customBg
+                    ? `linear-gradient(to top, ${customBg} 20%, transparent 100%)`
+                    : "linear-gradient(to top, rgba(255,255,255,0.95) 20%, transparent 100%)"
+                }}
+              />
+            )}
+          </div>
+
+          {/* Expander Footer */}
+          {isLong && (
+            <div className="mt-3 pt-2.5 flex items-center justify-between border-t border-current/10">
+              <button
+                type="button"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="text-xs font-bold flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:opacity-80 transition-opacity cursor-pointer py-1"
+              >
+                <span>{isExpanded ? "Mostra meno" : "Leggi tutto l'articolo"}</span>
+                {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowReaderModal(true)}
+                className="text-[11px] font-semibold opacity-60 hover:opacity-100 flex items-center gap-1 transition-opacity cursor-pointer py-1"
+                title="Apri in modalità lettura a schermo intero"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Modalità lettura</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </article>
+
+      {/* Reader Mode Modal */}
+      {showReaderModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div
+            className="relative w-full max-w-2xl max-h-[90vh] bg-white dark:bg-zinc-900 text-neutral-900 dark:text-neutral-100 rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-black/10 dark:border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-black/10 dark:border-white/10 shrink-0 bg-neutral-50/80 dark:bg-zinc-800/80 backdrop-blur-xs">
+              <div className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+                <Newspaper className="w-4 h-4 text-indigo-500" />
+                <span>Modalità Lettura</span>
+                {readTimeMin && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>{readTimeMin} min</span>
+                  </>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer text-xs flex items-center gap-1 font-semibold"
+                >
+                  {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Share2 className="w-4 h-4 opacity-70" />}
+                  <span className="hidden sm:inline">{copied ? "Copiato!" : "Condividi"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowReaderModal(false)}
+                  className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Chiudi"
+                >
+                  <X className="w-5 h-5 opacity-70 hover:opacity-100" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content Scroll Area */}
+            <div className="overflow-y-auto p-6 sm:p-8 space-y-5">
+              {module.imageUrl && (
+                <div className="w-full aspect-[16/9] rounded-2xl overflow-hidden shadow-xs">
+                  <img src={module.imageUrl} alt="" className="w-full h-full object-cover" />
+                </div>
+              )}
+              {module.title && (
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight leading-tight">
+                  {module.title}
+                </h1>
+              )}
+              {formattedDate && (
+                <div className="text-xs text-neutral-400 font-medium pb-2 border-b border-neutral-100 dark:border-neutral-800">
+                  Pubblicato il {formattedDate}
+                </div>
+              )}
+              <div className="text-sm sm:text-base leading-relaxed">
+                <Markdown components={markdownComponents}>
+                  {content}
+                </Markdown>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3 border-t border-black/10 dark:border-white/10 bg-neutral-50/50 dark:bg-zinc-800/50 text-right">
+              <button
+                type="button"
+                onClick={() => setShowReaderModal(false)}
+                className="px-5 py-2 bg-black dark:bg-white text-white dark:text-black rounded-xl text-xs font-bold uppercase tracking-wider hover:opacity-90 transition-opacity cursor-pointer"
+              >
+                Chiudi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
 export default function PublicBioPage({ page, isPreview = false }: { page: BioPage, isPreview?: boolean }) {
   const { profile, theme, links, socials, modules } = page;
   const lang = page.language || 'it';
   const [searchQuery, setSearchQuery] = useState('');
   const [banners, setBanners] = useState<AppBanner[]>([]);
-  const [confirmLink, setConfirmLink] = useState<{id?: string, url: string} | null>(null);
+  const [confirmLink, setConfirmLink] = useState<(Partial<BioLink> & { url: string; isMonetized?: boolean }) | null>(null);
+  const [adCountdown, setAdCountdown] = useState(5);
+  const [activeAdBanner, setActiveAdBanner] = useState<AppBanner | null>(null);
+
+  useEffect(() => {
+    if (confirmLink?.isMonetized) {
+      setAdCountdown(5);
+      const activeBanners = banners.filter(b => b.active);
+      if (activeBanners.length > 0) {
+        const shortUrlBanners = activeBanners.filter(b => b.position === "short_url");
+        const pool = shortUrlBanners.length > 0 ? shortUrlBanners : activeBanners;
+        setActiveAdBanner(pool[Math.floor(Math.random() * pool.length)]);
+      } else {
+        setActiveAdBanner(null);
+      }
+    }
+  }, [confirmLink, banners]);
+
+  useEffect(() => {
+    if (confirmLink?.isMonetized && adCountdown > 0) {
+      const timer = setTimeout(() => {
+        setAdCountdown(c => c - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [confirmLink, adCountdown]);
+
+  const handleLinkClick = (linkToOpen: BioLink, e: React.MouseEvent) => {
+    e.preventDefault();
+    const isMonetized = !!(linkToOpen.monetized || page.monetizeAllLinks);
+    setConfirmLink({
+      ...linkToOpen,
+      isMonetized
+    });
+  };
 
   useEffect(() => {
     if (!isPreview) {
@@ -307,12 +671,18 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
                               href={child.url}
                               target="_blank"
                               rel="noopener noreferrer"
+                              onClick={(e) => handleLinkClick(child, e)}
                               className={cn(
                                 "block w-full py-3 px-4 bg-white border-2 border-black text-center text-[10px] font-bold uppercase tracking-widest hover:bg-black hover:text-white transition-all hover:scale-[1.02]",
                                 roundedClass
                               )}
                             >
-                              {child.title || child.url}
+                              <span className="inline-flex items-center justify-center gap-1.5">
+                                {(child.monetized || page.monetizeAllLinks) && (
+                                  <DollarSign className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                                )}
+                                <span>{child.title || child.url}</span>
+                              </span>
                             </a>
                           ))}
                           {(link.children || []).length === 0 && (
@@ -384,7 +754,7 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
                   <motion.a
                     key={link.id}
                     href={link.url}
-                    onClick={(e) => { e.preventDefault(); setConfirmLink(link); }}
+                    onClick={(e) => handleLinkClick(link, e)}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, height: 0, marginBottom: 0 }}
@@ -425,13 +795,19 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
                 );
               } else {
                 const module = block as BioModule;
+                const isMicroblog = module.type === 'microblog';
                 return (
                   <motion.div 
                     key={module.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 + idx * 0.05 }}
-                    className="w-full p-4 bg-gray-50 rounded-xl border border-dashed border-gray-300 text-black"
+                    className={cn(
+                      "w-full",
+                      isMicroblog
+                        ? "p-0 bg-transparent border-0"
+                        : "p-4 bg-gray-50 rounded-xl border border-dashed border-gray-300 text-black"
+                    )}
                   >
                     {module.type === 'tip_jar' && (
                       <div className="text-center space-y-4">
@@ -463,30 +839,7 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
                       </div>
                     )}
                     {module.type === 'microblog' && (
-                      <div className="space-y-2 text-left" style={{
-                        backgroundColor: module.tags?.[0]?.startsWith('#') ? module.tags[0] : 'transparent',
-                        padding: module.tags?.[0]?.startsWith('#') ? '12px' : '0',
-                        borderRadius: '8px',
-                        color: module.tags?.[0] === '#1a1a1a' ? 'white' : 'inherit'
-                      }}>
-                        <h5 className="text-[10px] font-bold mb-2">{module.title}</h5>
-                        <div className="text-[10px] leading-relaxed markdown-body">
-                          <Markdown>{module.content}</Markdown>
-                        </div>
-                        {module.imageUrl && (
-                          <div className="mt-3 rounded-lg overflow-hidden border border-gray-100/10">
-                            <img src={module.imageUrl} alt="" className="w-full h-auto object-cover" />
-                          </div>
-                        )}
-                        {module.videoUrl && (
-                          <div className="mt-3 rounded-lg overflow-hidden border border-gray-100/10">
-                            <video src={module.videoUrl} controls className="w-full h-auto object-cover" />
-                          </div>
-                        )}
-                        {module.embedCode && (
-                          <div className="mt-3 rounded-lg overflow-hidden w-full" dangerouslySetInnerHTML={{ __html: module.embedCode }} />
-                        )}
-                      </div>
+                      <MicroblogArticleCard module={module} theme={theme} lang={lang} />
                     )}
                     {module.type === 'careerjet' && (
                       <CareerjetModule module={module} />
@@ -534,43 +887,152 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
         </div>
       )}
 
-      {/* Link Confirmation Modal */}
+      {/* Link Interstitial & Confirmation Modal */}
       {confirmLink && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setConfirmLink(null)}>
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" 
+          onClick={() => setConfirmLink(null)}
+        >
           <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
+            initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl text-center border-4 border-[#1A1A1A]" 
+            className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl text-center border-4 border-[#1A1A1A] overflow-hidden relative" 
             onClick={e => e.stopPropagation()}
           >
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <ExternalLink className="w-8 h-8 text-black" />
-            </div>
-            <h3 className="text-2xl font-bold mb-2 text-black">Stai uscendo dalla pagina</h3>
-            <p className="text-gray-500 mb-6 text-sm">Stai per visitare un sito web esterno. Vuoi continuare?</p>
-            
-            <div className="flex gap-4">
-              <button 
-                onClick={() => setConfirmLink(null)}
-                className="flex-1 px-4 py-3 border-2 border-gray-200 text-gray-500 font-bold uppercase tracking-widest rounded-xl hover:bg-gray-50 transition-colors text-xs"
-              >
-                Annulla
-              </button>
-              <a 
-                href={confirmLink.url}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => {
-                  if (!isPreview && confirmLink.id) {
-                    trackLinkClick(page.id, confirmLink.id);
-                  }
-                  setConfirmLink(null);
-                }}
-                className="flex-1 px-4 py-3 bg-[#1A1A1A] text-white font-bold uppercase tracking-widest rounded-xl hover:bg-black transition-colors flex items-center justify-center gap-2 text-xs"
-              >
-                Continua
-              </a>
-            </div>
+            {confirmLink.isMonetized ? (
+              <div className="flex flex-col items-center">
+                {/* Header */}
+                <div className="w-full flex items-center justify-between pb-3 mb-4 border-b border-gray-100">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      Link Monetizzato
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-black uppercase tracking-widest bg-black text-white px-3 py-1 rounded-full">
+                    {adCountdown > 0 ? `Attendi ${adCountdown}s` : "Pronto!"}
+                  </div>
+                </div>
+
+                {/* Ad Banner Display */}
+                {activeAdBanner ? (
+                  <div className="w-full bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden shadow-sm relative group mb-4">
+                    {activeAdBanner.type === "image" ? (
+                      <a href={activeAdBanner.linkUrl || "#"} target="_blank" rel="noopener noreferrer" className="block w-full relative aspect-[16/9]">
+                        <img src={activeAdBanner.imageUrl} alt={activeAdBanner.name} className="w-full h-full object-cover" />
+                        <div className="absolute top-2 right-2 bg-black/60 text-white text-[9px] px-2 py-0.5 rounded uppercase tracking-widest font-black backdrop-blur-sm">
+                          SPONSOR
+                        </div>
+                      </a>
+                    ) : activeAdBanner.type === "text" ? (
+                      <a 
+                        href={activeAdBanner.linkUrl || "#"} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="block w-full flex flex-col items-center justify-center text-center p-6 relative aspect-[16/9]"
+                        style={{ backgroundColor: activeAdBanner.backgroundColor || "#000", color: activeAdBanner.textColor || "#fff" }}
+                      >
+                        <h4 className="text-xl sm:text-2xl font-black uppercase tracking-widest">{activeAdBanner.text}</h4>
+                        <div className="absolute top-2 right-2 bg-black/20 text-current text-[9px] px-2 py-0.5 rounded uppercase tracking-widest font-bold backdrop-blur-sm border border-current/20">
+                          SPONSOR
+                        </div>
+                      </a>
+                    ) : (
+                      <div className="w-full aspect-[16/9] flex items-center justify-center bg-gray-50 relative p-2">
+                        <div className="absolute top-2 right-2 bg-black/60 text-white text-[9px] px-2 py-0.5 rounded uppercase tracking-widest font-black z-10">
+                          SPONSOR
+                        </div>
+                        <div dangerouslySetInnerHTML={{ __html: activeAdBanner.code || "" }} />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="w-full aspect-[16/9] bg-gradient-to-br from-emerald-50/50 to-gray-50 rounded-2xl border-2 border-dashed border-emerald-200 flex flex-col items-center justify-center p-6 relative overflow-hidden mb-4">
+                    <div className="text-center z-10">
+                      <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 mb-2">
+                        <DollarSign className="w-5 h-5" />
+                      </div>
+                      <h4 className="text-sm font-black uppercase tracking-widest text-black mb-1">Spazio Pubblicitario</h4>
+                      <p className="text-gray-500 text-xs">Supporta il creator visualizzando questo annuncio.</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Target info */}
+                <div className="mb-4 w-full text-left bg-gray-50 p-3 rounded-xl border border-gray-200">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-0.5">Destinazione:</span>
+                  <p className="text-xs font-bold text-gray-800 truncate">{confirmLink.title || confirmLink.url}</p>
+                  <p className="text-[10px] text-gray-500 truncate">{confirmLink.url}</p>
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden mb-5">
+                  <div 
+                    className="bg-emerald-500 h-full transition-all duration-1000 ease-linear rounded-full"
+                    style={{ width: `${((5 - adCountdown) / 5) * 100}%` }}
+                  />
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-3 w-full">
+                  <button 
+                    onClick={() => setConfirmLink(null)}
+                    className="px-4 py-3 border-2 border-gray-200 text-gray-500 font-bold uppercase tracking-widest rounded-xl hover:bg-gray-50 transition-colors text-xs"
+                  >
+                    Annulla
+                  </button>
+                  <button 
+                    disabled={adCountdown > 0}
+                    onClick={() => {
+                      if (!isPreview && confirmLink.id) {
+                        trackLinkClick(page.id, confirmLink.id);
+                      }
+                      window.open(confirmLink.url, "_blank", "noopener,noreferrer");
+                      setConfirmLink(null);
+                    }}
+                    className={cn(
+                      "flex-1 px-4 py-3 font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 text-xs",
+                      adCountdown > 0 
+                        ? "bg-gray-200 text-gray-400 cursor-not-allowed" 
+                        : "bg-[#1A1A1A] text-white hover:bg-emerald-600 shadow-md cursor-pointer"
+                    )}
+                  >
+                    {adCountdown > 0 ? `Attendi (${adCountdown}s)` : "Continua verso il link →"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <ExternalLink className="w-8 h-8 text-black" />
+                </div>
+                <h3 className="text-2xl font-bold mb-2 text-black">Stai uscendo dalla pagina</h3>
+                <p className="text-gray-500 mb-6 text-sm">Stai per visitare un sito web esterno. Vuoi continuare?</p>
+                
+                <div className="flex gap-4">
+                  <button 
+                    onClick={() => setConfirmLink(null)}
+                    className="flex-1 px-4 py-3 border-2 border-gray-200 text-gray-500 font-bold uppercase tracking-widest rounded-xl hover:bg-gray-50 transition-colors text-xs"
+                  >
+                    Annulla
+                  </button>
+                  <a 
+                    href={confirmLink.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => {
+                      if (!isPreview && confirmLink.id) {
+                        trackLinkClick(page.id, confirmLink.id);
+                      }
+                      setConfirmLink(null);
+                    }}
+                    className="flex-1 px-4 py-3 bg-[#1A1A1A] text-white font-bold uppercase tracking-widest rounded-xl hover:bg-black transition-colors flex items-center justify-center gap-2 text-xs"
+                  >
+                    Continua
+                  </a>
+                </div>
+              </div>
+            )}
           </motion.div>
         </div>
       )}
@@ -613,14 +1075,14 @@ const CareerjetModule = ({ module }: { module: any }) => {
         const query = new URLSearchParams(queryParams);
         const res = await fetch(`/api/careerjet?${query.toString()}`);
         if (!res.ok) {
-          console.warn("Could not fetch jobs, status:", res.status);
+          setJobs([]); return;
           setJobs([]);
           return;
         }
         const data = await res.json();
         setJobs(data.jobs || []);
       } catch (err: any) {
-        console.warn("Error fetching jobs:", err?.message || err);
+        // gracefully handled
         setJobs([]);
       } finally {
         setLoading(false);
