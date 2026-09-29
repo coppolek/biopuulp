@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Helmet } from 'react-helmet-async';
+
 import Markdown from 'react-markdown';
 import { BioPage, BioLink, SocialLink, BioModule, AppBanner } from '../types';
 import { cn } from '../lib/utils';
@@ -152,14 +152,7 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
 
   return (
     <>
-      <Helmet>
-        <title>{page.seo?.title || page.profile.name + ' - Link in Bio'}</title>
-        <meta name="description" content={page.seo?.description || page.profile.bio} />
-        <meta property="og:title" content={page.seo?.title || page.profile.name + ' - Link in Bio'} />
-        <meta property="og:description" content={page.seo?.description || page.profile.bio} />
-        <meta property="og:image" content={page.seo?.imageUrl || page.profile.avatarUrl} />
-        <meta name="twitter:card" content="summary_large_image" />
-      </Helmet>
+      
     <div 
       className={cn("min-h-screen w-full flex flex-col items-center py-12 px-4 relative z-0", isPreview ? "h-full overflow-y-auto" : "")}
       style={{ 
