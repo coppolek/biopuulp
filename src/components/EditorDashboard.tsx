@@ -1200,10 +1200,6 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
     }
 
     setIsScrapingArticle(true);
-    setAiStatusMessage(elaborateWithAi 
-      ? "Gemini sta estraendo e rielaborando l'articolo per renderlo unico al 100%..."
-      : "Estrazione dell'articolo in corso..."
-    );
 
     try {
       const res = await fetch('/api/scrape', {
@@ -1211,12 +1207,11 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           url: targetUrl,
-          elaborateWithGemini: elaborateWithAi,
-          style: aiStyle
+          elaborateWithGemini: false
         })
       });
       if (!res.ok) {
-        throw new Error("Errore durante l'elaborazione dell'articolo");
+        throw new Error("Errore durante l'estrazione dell'articolo");
       }
       const data = await res.json();
       if (!data.title && !data.description && !data.content) {
@@ -1230,21 +1225,15 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
       if (data.seoTitle || data.title) setSeoTitle(data.seoTitle || data.title);
       if (data.seoDescription || data.description) setSeoDescription(data.seoDescription || data.description);
       if (data.seoTitle || data.seoDescription) setShowSeo(true);
-
-      if (data.isAiElaborated) {
-        setIsAiElaborated(true);
-        toast.success("✨ Articolo importato, elaborato e reso unico con Gemini AI!");
-      } else {
-        setIsAiElaborated(false);
-        toast.success("Articolo estratto dalla fonte!");
-      }
+      setIsAiElaborated(false);
+      toast.success("Articolo estratto con successo!");
 
       setScrapeArticleUrl('');
       const form = document.getElementById('microblog-form');
       if (form) form.scrollIntoView({ behavior: 'smooth' });
     } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Impossibile elaborare l'articolo dal link");
+      console.warn("Scraping warning:", err);
+      toast.error(err.message || "Impossibile estrarre l'articolo dal link");
     } finally {
       setIsScrapingArticle(false);
       setAiStatusMessage('');
@@ -1380,70 +1369,24 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
         <p className="text-gray-500 text-sm">Pubblica articoli, mini-saggi, notizie o embed per i visitatori della tua pagina.</p>
       </div>
 
-      {/* Box Inserisci Articolo da Link & Rielabora con Gemini AI */}
+      {/* Box Estrai Articolo da Link */}
       <div className="bg-gradient-to-br from-indigo-50/90 via-purple-50/70 to-pink-50/40 border border-indigo-200/90 rounded-2xl p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-xs shrink-0">
-              <Sparkles className="w-5 h-5 animate-pulse" />
+              <Download className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-black uppercase tracking-wider text-indigo-950">
-                  Importa da Link & Rielabora con Gemini AI
+                  Estrai Articolo da Link
                 </h3>
-                <span className="text-[9px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-100/90 px-2 py-0.5 rounded-full border border-indigo-200">
-                  Unico al 100%
-                </span>
               </div>
               <p className="text-[11px] text-indigo-900/80 mt-0.5">
-                Incolla il link di una notizia o blog: Gemini analizzerà la fonte e la riscriverà in un pezzo esclusivo, autorevole e coinvolgente per il tuo pubblico.
+                Incolla il link di una notizia o blog per estrarre direttamente titolo, testo e immagine nel tuo editor.
               </p>
             </div>
           </div>
-        </div>
-
-        {/* AI Options Selector */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-indigo-200/50 text-xs">
-          <label className="flex items-center gap-2 cursor-pointer font-bold text-indigo-950 select-none">
-            <input 
-              type="checkbox"
-              checked={elaborateWithAi}
-              onChange={e => setElaborateWithAi(e.target.checked)}
-              className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 accent-indigo-600 cursor-pointer"
-            />
-            <span className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Rielabora e rendi unico con Gemini AI</span>
-            </span>
-          </label>
-
-          {elaborateWithAi && (
-            <div className="flex items-center gap-1.5 bg-white/80 p-1 rounded-xl border border-indigo-100 shadow-2xs">
-              <span className="text-[10px] font-bold text-indigo-900/60 uppercase tracking-wider px-2">Stile:</span>
-              <button
-                type="button"
-                onClick={() => setAiStyle('editorial')}
-                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${aiStyle === 'editorial' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-900/70 hover:text-indigo-950 hover:bg-indigo-50'}`}
-              >
-                📰 Editoriale
-              </button>
-              <button
-                type="button"
-                onClick={() => setAiStyle('storytelling')}
-                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${aiStyle === 'storytelling' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-900/70 hover:text-indigo-950 hover:bg-indigo-50'}`}
-              >
-                🚀 Storytelling
-              </button>
-              <button
-                type="button"
-                onClick={() => setAiStyle('summary')}
-                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${aiStyle === 'summary' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-900/70 hover:text-indigo-950 hover:bg-indigo-50'}`}
-              >
-                ⚡ Punti Chiave
-              </button>
-            </div>
-          )}
         </div>
 
         <form onSubmit={handleScrapeArticle} className="flex flex-col sm:flex-row gap-2">
@@ -1474,23 +1417,16 @@ function MicroblogEditor({ page, setPage }: { page: BioPage, setPage: (page: Bio
             {isScrapingArticle ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>{elaborateWithAi ? "Gemini sta elaborando..." : "Estrazione in corso..."}</span>
+                <span>Estrazione in corso...</span>
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4" />
-                <span>{elaborateWithAi ? "Estrai & Rendi Unico" : "Estrai Articolo"}</span>
+                <Download className="w-4 h-4" />
+                <span>ESTRAI</span>
               </>
             )}
           </button>
         </form>
-
-        {isScrapingArticle && aiStatusMessage && (
-          <div className="text-[11px] text-indigo-800 font-medium flex items-center gap-2 animate-pulse bg-white/70 px-3 py-1.5 rounded-lg border border-indigo-100">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-            <span>{aiStatusMessage}</span>
-          </div>
-        )}
       </div>
 
       <div id="microblog-form" className="p-5 bg-gray-50 rounded-2xl border border-gray-200/80 shadow-xs">

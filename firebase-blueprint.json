@@ -1,0 +1,206 @@
+{
+  "entities": {
+    "user": {
+      "title": "User",
+      "description": "User profile data",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "User email address"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Account creation timestamp"
+        }
+      },
+      "required": ["email", "createdAt"]
+    },
+    "page": {
+      "title": "BioPage",
+      "description": "Bio link landing page document",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique page identifier"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user ID"
+        },
+        "slug": {
+          "type": "string",
+          "description": "Custom URL path slug"
+        },
+        "profile": {
+          "type": "object",
+          "description": "Profile information (name, bio, avatar)"
+        },
+        "theme": {
+          "type": "object",
+          "description": "Visual theme and typography styling"
+        },
+        "links": {
+          "type": "array",
+          "description": "Ordered list of links"
+        },
+        "socials": {
+          "type": "array",
+          "description": "List of social profiles"
+        },
+        "modules": {
+          "type": "array",
+          "description": "Interactive modules such as microblog and newsletter"
+        },
+        "views": {
+          "type": "number",
+          "description": "Total lifetime view count"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Page creation timestamp"
+        }
+      },
+      "required": ["id", "userId", "slug", "createdAt"]
+    },
+    "analytics": {
+      "title": "PageAnalytics",
+      "description": "Daily and monthly traffic metrics for a page",
+      "type": "object",
+      "properties": {
+        "pageId": {
+          "type": "string",
+          "description": "Target page identifier"
+        },
+        "dailyStats": {
+          "type": "array",
+          "description": "Daily page views and click counts"
+        },
+        "monthlyStats": {
+          "type": "array",
+          "description": "Monthly aggregate stats"
+        },
+        "referrals": {
+          "type": "array",
+          "description": "Traffic sources breakdown"
+        }
+      },
+      "required": ["pageId"]
+    },
+    "subscriber": {
+      "title": "Subscriber",
+      "description": "Newsletter subscriber email record",
+      "type": "object",
+      "properties": {
+        "pageId": {
+          "type": "string",
+          "description": "Page identifier the subscriber signed up on"
+        },
+        "email": {
+          "type": "string",
+          "description": "Subscriber email address"
+        },
+        "subscribedAt": {
+          "type": "string",
+          "description": "Subscription timestamp"
+        }
+      },
+      "required": ["pageId", "email", "subscribedAt"]
+    },
+    "banner": {
+      "title": "AppBanner",
+      "description": "Global promotional or sponsor banner",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Banner identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of banner"
+        },
+        "type": {
+          "type": "string",
+          "description": "Banner type (image, text, code)"
+        },
+        "position": {
+          "type": "string",
+          "description": "Display placement (top, bottom, short_url)"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether banner is currently displayed"
+        }
+      },
+      "required": ["id", "name", "type", "position", "active"]
+    },
+    "shortLink": {
+      "title": "ShortLink",
+      "description": "Shortened and monetized link record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Document ID"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Creator user ID"
+        },
+        "shortCode": {
+          "type": "string",
+          "description": "Short vanity code"
+        },
+        "targetUrl": {
+          "type": "string",
+          "description": "Destination redirect URL"
+        },
+        "title": {
+          "type": "string",
+          "description": "Link title"
+        },
+        "clicks": {
+          "type": "number",
+          "description": "Click count"
+        },
+        "monetized": {
+          "type": "boolean",
+          "description": "Whether intermediate ad interstitial is active"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["userId", "shortCode", "targetUrl", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "user",
+      "description": "User profile collection"
+    },
+    "/pages/{pageId}": {
+      "schema": "page",
+      "description": "Creator bio pages collection"
+    },
+    "/analytics/{pageId}": {
+      "schema": "analytics",
+      "description": "Page traffic analytics documents"
+    },
+    "/subscribers/{subscriberId}": {
+      "schema": "subscriber",
+      "description": "Newsletter subscribers collection"
+    },
+    "/banners/{bannerId}": {
+      "schema": "banner",
+      "description": "App sponsor and promotional banners"
+    },
+    "/shortLinks/{linkId}": {
+      "schema": "shortLink",
+      "description": "Short links collection"
+    }
+  }
+}

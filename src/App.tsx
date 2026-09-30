@@ -11,7 +11,7 @@ import Auth from './components/Auth';
 import PublicView from './components/PublicView';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { getUserPages, createNewPage, savePage, getAllPages, deletePage, getAllBanners, saveBanner, deleteBanner, getUserShortLinks, createShortLink, deleteShortLink, updateShortLink, isQuotaExceeded, subscribeToQuotaChanges } from './lib/db';
+import { getUserPages, createNewPage, savePage, getAllPages, deletePage, getAllBanners, saveBanner, deleteBanner, getUserShortLinks, createShortLink, deleteShortLink, updateShortLink } from './lib/db';
 import { BioPage, AppBanner } from './types';
 
 
@@ -51,11 +51,6 @@ function AppDashboard() {
   const [shortLinks, setShortLinks] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState<BioPage | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
-  const [quotaNotice, setQuotaNotice] = useState(isQuotaExceeded());
-
-  useEffect(() => {
-    return subscribeToQuotaChanges(setQuotaNotice);
-  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -162,23 +157,6 @@ function AppDashboard() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1A1A1A] font-sans underline-offset-4">
-      {quotaNotice && (
-        <div className="bg-amber-500/10 border-b border-amber-500/20 text-amber-950 px-4 py-2.5 text-xs flex items-center justify-between gap-3 animate-in fade-in">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
-            <span>
-              <strong>Modalità Locale & Cache Attiva:</strong> La quota gratuita di Google Cloud Firestore per oggi è esaurita. Tutte le tue pagine, modifiche e articoli sono memorizzati in modo sicuro e funzionante in locale nel browser e si sincronizzeranno al reset della quota.
-            </span>
-          </div>
-          <button 
-            type="button" 
-            onClick={() => setQuotaNotice(false)} 
-            className="text-amber-800 hover:text-amber-950 font-bold px-1.5 py-0.5 rounded text-[11px] cursor-pointer"
-          >
-            Chiudi
-          </button>
-        </div>
-      )}
       {view === 'admin' ? (
         <AdminView onBack={() => setView('dashboard')} />
       ) : view === 'analytics' && currentPage ? (

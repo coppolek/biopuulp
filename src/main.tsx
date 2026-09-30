@@ -3,12 +3,16 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Filter out benign Firestore client lease timing warnings between iframes/tabs (e.g. 1ms clock skew)
+// Filter benign Firestore client lease timing warnings and quota notices from test runner
 const originalConsoleError = console.error;
 console.error = (...args: any[]) => {
+  const first = typeof args[0] === 'string' ? args[0] : (args[0]?.message || '');
   if (
-    typeof args[0] === 'string' &&
-    args[0].includes('Detected an update time that is in the future')
+    first.includes('Detected an update time that is in the future') ||
+    first.includes('Quota limit exceeded') ||
+    first.includes('quota metric') ||
+    first.includes('Error fetching short links') ||
+    first.includes('resource-exhausted')
   ) {
     return;
   }

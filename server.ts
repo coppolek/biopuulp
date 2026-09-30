@@ -476,7 +476,7 @@ ${rawContent.slice(0, 10000)}
 
   app.post("/api/scrape", async (req, res) => {
     try {
-      let { url, elaborateWithGemini = true, style = "editorial" } = req.body;
+      let { url, elaborateWithGemini = false, style = "editorial" } = req.body;
       if (!url) {
         return res.status(400).json({ error: "URL is required" });
       }
