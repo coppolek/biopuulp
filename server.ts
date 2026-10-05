@@ -5,15 +5,25 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import * as cheerio from "cheerio";
 import { 
-  mysqlDb, 
-  initMySQLDatabase, 
-  getDatabaseStatus, 
-  testConnection, 
-  updateDatabaseConfig, 
+  unifiedDb as mysqlDb, 
+  getFullDatabaseStatus, 
+  setActiveEngine, 
+  getActiveEngine, 
+  initActiveDatabase, 
+  syncDataToOracle 
+} from "./server/databaseHub.ts";
+import { 
+  testConnection as testMySQLConnection, 
+  updateDatabaseConfig as updateMySQLConfig, 
   exportDatabaseBackup, 
   generateSqlDump, 
   importDatabaseBackup 
 } from "./server/mysql.ts";
+import { 
+  testOracleConnection, 
+  updateOracleConfig, 
+  extractWalletZip 
+} from "./server/oracle.ts";
 
 async function getShortLinkData(shortCode: string) {
   try {
@@ -230,28 +240,44 @@ async function startServer() {
 
   app.use(express.json({ limit: "50mb" }));
 
-  // Initialize MySQL Connection & Schema
-  initMySQLDatabase().catch(err => {
-    console.warn("[MySQL] Async initialization note:", err);
+  // Initialize Active Database Connection & Schema (Oracle or MySQL)
+  initActiveDatabase().catch(err => {
+    console.warn("[DB Hub] Async initialization note:", err);
   });
 
   // API health
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", database: "mysql" });
+    res.json({ status: "ok", activeEngine: getActiveEngine() });
   });
 
   // --- Database Admin & Management Endpoints ---
-  app.get("/api/admin/db/status", (req, res) => {
+  app.get("/api/admin/db/status", async (req, res) => {
     try {
-      res.json(getDatabaseStatus());
+      res.json(await getFullDatabaseStatus());
     } catch (e: any) {
       res.status(500).json({ error: e?.message });
     }
   });
 
+  app.post("/api/admin/db/engine", async (req, res) => {
+    try {
+      const { engine } = req.body;
+      if (engine !== 'oracle' && engine !== 'mysql') {
+        return res.status(400).json({ error: "Motore non valido (supportati: oracle, mysql)" });
+      }
+      setActiveEngine(engine);
+      await initActiveDatabase();
+      const status = await getFullDatabaseStatus();
+      res.json({ success: true, activeEngine: engine, status });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  // MySQL routes
   app.post("/api/admin/db/test", async (req, res) => {
     try {
-      const result = await testConnection(req.body);
+      const result = await testMySQLConnection(req.body);
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message });
@@ -260,7 +286,49 @@ async function startServer() {
 
   app.post("/api/admin/db/config", async (req, res) => {
     try {
-      const result = await updateDatabaseConfig(req.body);
+      const result = await updateMySQLConfig(req.body);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e?.message });
+    }
+  });
+
+  // Oracle routes
+  app.post("/api/admin/db/oracle/test", async (req, res) => {
+    try {
+      const result = await testOracleConnection(req.body);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e?.message });
+    }
+  });
+
+  app.post("/api/admin/db/oracle/config", async (req, res) => {
+    try {
+      const result = await updateOracleConfig(req.body);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e?.message });
+    }
+  });
+
+  app.post("/api/admin/db/oracle/wallet", async (req, res) => {
+    try {
+      const { zipBase64, walletPassword } = req.body;
+      if (!zipBase64) {
+        return res.status(400).json({ error: "File zip mancante" });
+      }
+      const buffer = Buffer.from(zipBase64.replace(/^data:application\/[^;]+;base64,/, ''), 'base64');
+      const result = await extractWalletZip(buffer, walletPassword);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e?.message });
+    }
+  });
+
+  app.post("/api/admin/db/oracle/sync", async (req, res) => {
+    try {
+      const result = await syncDataToOracle();
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ success: false, error: e?.message });
