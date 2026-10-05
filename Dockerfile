@@ -22,7 +22,6 @@ WORKDIR /app
 # Copy built assets and necessary configuration files
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/firebase-applet-config.json ./
 
 # Install only production dependencies
 RUN npm install --omit=dev

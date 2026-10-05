@@ -1,220 +1,141 @@
 import { compressDataUrl } from "./imageUtils";
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, deleteDoc, increment, addDoc } from 'firebase/firestore';
-import { db } from './firebase';
 import { BioPage, PageAnalytics, AppBanner } from '../types';
 
 export const getAllBanners = async (): Promise<AppBanner[]> => {
   try {
-    const q = query(collection(db, 'banners'));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppBanner));
+    const res = await fetch('/api/banners');
+    if (!res.ok) return [];
+    return await res.json();
   } catch (error) {
-    console.warn('Could not fetch banners from Firestore:', error);
+    console.warn('Could not fetch banners from MySQL API:', error);
     return [];
   }
 };
 
 export const saveBanner = async (banner: AppBanner): Promise<void> => {
   try {
-    const bannerRef = doc(db, 'banners', banner.id);
-    await setDoc(bannerRef, banner);
+    await fetch('/api/banners', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(banner)
+    });
   } catch (error) {
-    console.warn('Could not save banner to Firestore:', error);
+    console.warn('Could not save banner to MySQL API:', error);
   }
 };
 
 export const deleteBanner = async (bannerId: string): Promise<void> => {
   try {
-    const bannerRef = doc(db, 'banners', bannerId);
-    await deleteDoc(bannerRef);
+    await fetch(`/api/banners/${bannerId}`, { method: 'DELETE' });
   } catch (error) {
-    console.warn('Could not delete banner from Firestore:', error);
+    console.warn('Could not delete banner from MySQL API:', error);
   }
 };
 
 export const getPageAnalytics = async (pageId: string): Promise<PageAnalytics> => {
-  let data: Partial<PageAnalytics> = {};
   try {
-    const docRef = doc(db, 'analytics', pageId);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      data = docSnap.data() as PageAnalytics;
+    const res = await fetch(`/api/analytics/${pageId}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.pageId) return data;
     }
   } catch (error) {
-    console.warn('Could not fetch analytics from Firestore:', error);
+    console.warn('Could not fetch analytics from MySQL API:', error);
   }
   
-  if (!data.dailyStats) {
-    data.dailyStats = Array.from({ length: 7 }).map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return {
-        date: d.toISOString().split('T')[0],
-        views: Math.floor(Math.random() * 50) + 5,
-        clicks: Math.floor(Math.random() * 20) + 2,
-      };
-    });
-  }
+  const dailyStats = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return {
+      date: d.toISOString().split('T')[0],
+      views: Math.floor(Math.random() * 50) + 5,
+      clicks: Math.floor(Math.random() * 20) + 2,
+    };
+  });
 
-  if (!data.monthlyStats) {
-    data.monthlyStats = Array.from({ length: 6 }).map((_, i) => {
-      const d = new Date();
-      d.setMonth(d.getMonth() - (5 - i));
-      return {
-        month: d.toLocaleString('default', { month: 'short' }) + ' ' + d.getFullYear(),
-        views: Math.floor(Math.random() * 1500) + 200,
-        clicks: Math.floor(Math.random() * 600) + 50,
-      };
-    });
-  }
+  const monthlyStats = Array.from({ length: 6 }).map((_, i) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - (5 - i));
+    return {
+      month: d.toLocaleString('default', { month: 'short' }) + ' ' + d.getFullYear(),
+      views: Math.floor(Math.random() * 1500) + 200,
+      clicks: Math.floor(Math.random() * 600) + 50,
+    };
+  });
 
-  if (!data.referrals) {
-    data.referrals = [
-      { source: 'Instagram', count: 120 },
-      { source: 'Twitter', count: 60 },
-      { source: 'Direct', count: 45 },
-      { source: 'TikTok', count: 85 },
-      { source: 'Other', count: 20 },
-    ].sort((a, b) => b.count - a.count);
-  }
-    
+  const referrals = [
+    { source: 'Instagram', count: 120 },
+    { source: 'Twitter', count: 60 },
+    { source: 'Direct', count: 45 },
+    { source: 'TikTok', count: 85 },
+    { source: 'Other', count: 20 },
+  ].sort((a, b) => b.count - a.count);
+
   return {
     pageId,
-    dailyStats: data.dailyStats,
-    monthlyStats: data.monthlyStats,
-    referrals: data.referrals
+    dailyStats,
+    monthlyStats,
+    referrals
   };
 };
 
 export const trackPageView = async (pageId: string): Promise<void> => {
   try {
-    const pageRef = doc(db, 'pages', pageId);
-    await updateDoc(pageRef, {
-      views: increment(1)
-    });
-
-    const docRef = doc(db, 'analytics', pageId);
-    const docSnap = await getDoc(docRef);
-    const today = new Date().toISOString().split('T')[0];
-    
-    if (docSnap.exists()) {
-      const data = docSnap.data() as PageAnalytics;
-      const existingStatIndex = data.dailyStats?.findIndex(s => s.date === today);
-      
-      if (existingStatIndex !== undefined && existingStatIndex >= 0) {
-        data.dailyStats[existingStatIndex].views += 1;
-      } else {
-        if (!data.dailyStats) data.dailyStats = [];
-        data.dailyStats.push({ date: today, views: 1, clicks: 0 });
-      }
-      await setDoc(docRef, data);
-    } else {
-      await setDoc(docRef, {
-        pageId,
-        dailyStats: [{ date: today, views: 1, clicks: 0 }]
-      });
-    }
+    await fetch(`/api/analytics/${pageId}/view`, { method: 'POST' });
   } catch (error) {
-    console.warn('Could not track page view in Firestore:', error);
+    console.warn('Could not track page view in MySQL API:', error);
   }
 };
 
 export const trackLinkClick = async (pageId: string, linkId: string): Promise<void> => {
   try {
-    const docRef = doc(db, 'analytics', pageId);
-    const docSnap = await getDoc(docRef);
-    const today = new Date().toISOString().split('T')[0];
-    
-    if (docSnap.exists()) {
-      const data = docSnap.data() as PageAnalytics;
-      const existingStatIndex = data.dailyStats?.findIndex(s => s.date === today);
-      
-      if (existingStatIndex !== undefined && existingStatIndex >= 0) {
-        data.dailyStats[existingStatIndex].clicks += 1;
-      } else {
-        if (!data.dailyStats) data.dailyStats = [];
-        data.dailyStats.push({ date: today, views: 0, clicks: 1 });
-      }
-      await setDoc(docRef, data);
-    } else {
-      await setDoc(docRef, {
-        pageId,
-        dailyStats: [{ date: today, views: 0, clicks: 1 }]
-      });
-    }
-
-    const pageRef = doc(db, 'pages', pageId);
-    const pageSnap = await getDoc(pageRef);
-    
-    if (pageSnap.exists()) {
-      const pageData = pageSnap.data() as BioPage;
-      let updated = false;
-      const linkIndex = pageData.links?.findIndex(l => l.id === linkId);
-      
-      if (linkIndex !== undefined && linkIndex >= 0) {
-        pageData.links[linkIndex].clicks = (pageData.links[linkIndex].clicks || 0) + 1;
-        updated = true;
-      } else if (pageData.links) {
-        for (const l of pageData.links) {
-          if (l.children) {
-            const childIdx = l.children.findIndex(c => c.id === linkId);
-            if (childIdx >= 0) {
-              l.children[childIdx].clicks = (l.children[childIdx].clicks || 0) + 1;
-              updated = true;
-              break;
-            }
-          }
-        }
-      }
-      if (updated) {
-        await setDoc(pageRef, pageData);
-      }
-    }
+    await fetch(`/api/analytics/${pageId}/click`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linkId })
+    });
   } catch (error) {
-    console.warn('Could not track link click in Firestore:', error);
+    console.warn('Could not track link click in MySQL API:', error);
   }
 };
 
 export const getUserPages = async (userId: string): Promise<BioPage[]> => {
   try {
-    const q = query(collection(db, 'pages'), where('userId', '==', userId));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BioPage));
+    const res = await fetch(`/api/pages?userId=${encodeURIComponent(userId)}`);
+    if (!res.ok) return [];
+    return await res.json();
   } catch (error) {
-    console.warn('Could not fetch user pages from Firestore:', error);
+    console.warn('Could not fetch user pages from MySQL API:', error);
     return [];
   }
 };
 
 export const getAllPages = async (): Promise<BioPage[]> => {
   try {
-    const q = query(collection(db, 'pages'));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BioPage));
+    const res = await fetch('/api/pages/all');
+    if (!res.ok) return [];
+    return await res.json();
   } catch (error) {
-    console.warn('Could not fetch all pages from Firestore:', error);
+    console.warn('Could not fetch all pages from MySQL API:', error);
     return [];
   }
 };
 
 export const deletePage = async (pageId: string): Promise<void> => {
   try {
-    const pageRef = doc(db, 'pages', pageId);
-    await deleteDoc(pageRef);
+    await fetch(`/api/pages/${pageId}`, { method: 'DELETE' });
   } catch (error) {
-    console.warn('Could not delete page from Firestore:', error);
+    console.warn('Could not delete page from MySQL API:', error);
   }
 };
 
 export const getPageBySlug = async (slug: string): Promise<BioPage | null> => {
   try {
-    const q = query(collection(db, 'pages'), where('slug', '==', slug));
-    const querySnapshot = await getDocs(q);
-    if (querySnapshot.empty) return null;
-    const docSnap = querySnapshot.docs[0];
-    return { id: docSnap.id, ...docSnap.data() } as BioPage;
+    const res = await fetch(`/api/pages/by-slug/${encodeURIComponent(slug)}`);
+    if (!res.ok) return null;
+    return await res.json();
   } catch (error) {
-    console.warn('Could not get page by slug from Firestore:', error);
+    console.warn('Could not get page by slug from MySQL API:', error);
     return null;
   }
 };
@@ -266,10 +187,13 @@ export const savePage = async (page: BioPage & { userId: string }): Promise<void
   }
 
   try {
-    const pageRef = doc(db, 'pages', page.id);
-    await setDoc(pageRef, page);
+    await fetch('/api/pages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(page)
+    });
   } catch (error) {
-    console.warn('Could not save page to Firestore:', error);
+    console.warn('Could not save page to MySQL API:', error);
   }
 };
 
@@ -305,91 +229,86 @@ export const createNewPage = async (userId: string, slug: string): Promise<BioPa
 
 export const subscribeToNewsletter = async (pageId: string, email: string): Promise<void> => {
   try {
-    const subscriberRef = doc(collection(db, 'subscribers'));
-    await setDoc(subscriberRef, {
-      pageId,
-      email,
-      subscribedAt: new Date().toISOString()
+    await fetch('/api/subscribers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pageId, email })
     });
   } catch (error) {
-    console.warn('Could not subscribe to newsletter in Firestore:', error);
+    console.warn('Could not subscribe to newsletter in MySQL API:', error);
   }
 };
 
 export const getPageSubscribers = async (pageId: string): Promise<{id: string, email: string, subscribedAt: string}[]> => {
   try {
-    const q = query(collection(db, 'subscribers'), where('pageId', '==', pageId));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+    const res = await fetch(`/api/subscribers?pageId=${encodeURIComponent(pageId)}`);
+    if (!res.ok) return [];
+    return await res.json();
   } catch (error) {
-    console.warn('Could not fetch subscribers from Firestore:', error);
+    console.warn('Could not fetch subscribers from MySQL API:', error);
     return [];
   }
 };
 
 export const getUserShortLinks = async (userId: string) => {
   try {
-    const q = query(collection(db, 'shortLinks'), where('userId', '==', userId));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const res = await fetch(`/api/short-links?userId=${encodeURIComponent(userId)}`);
+    if (!res.ok) return [];
+    return await res.json();
   } catch (error) {
-    console.warn('Could not fetch short links from Firestore:', error);
+    console.warn('Could not fetch short links from MySQL API:', error);
     return [];
   }
 };
 
 export const createShortLink = async (userId: string, data: any) => {
   try {
-    const docRef = await addDoc(collection(db, 'shortLinks'), {
-      ...data,
-      userId,
-      createdAt: new Date().toISOString(),
-      clicks: 0
+    const res = await fetch('/api/short-links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...data, userId })
     });
-    return { id: docRef.id, ...data, userId, createdAt: new Date().toISOString(), clicks: 0 };
+    if (res.ok) return await res.json();
   } catch (error) {
-    console.warn('Could not create short link in Firestore:', error);
-    return { id: `link_${Date.now()}`, ...data, userId, createdAt: new Date().toISOString(), clicks: 0 };
+    console.warn('Could not create short link in MySQL API:', error);
   }
+  return { id: `link_${Date.now()}`, ...data, userId, createdAt: new Date().toISOString(), clicks: 0 };
 };
 
 export const updateShortLink = async (id: string, data: any) => {
   try {
-    const docRef = doc(db, 'shortLinks', id);
-    await updateDoc(docRef, data);
+    await fetch(`/api/short-links/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
   } catch (error) {
-    console.warn('Could not update short link in Firestore:', error);
+    console.warn('Could not update short link in MySQL API:', error);
   }
 };
 
 export const deleteShortLink = async (id: string) => {
   try {
-    await deleteDoc(doc(db, 'shortLinks', id));
+    await fetch(`/api/short-links/${id}`, { method: 'DELETE' });
   } catch (error) {
-    console.warn('Could not delete short link in Firestore:', error);
+    console.warn('Could not delete short link in MySQL API:', error);
   }
 };
 
 export const getShortLinkByCode = async (shortCode: string) => {
   try {
-    const q = query(collection(db, 'shortLinks'), where('shortCode', '==', shortCode));
-    const snapshot = await getDocs(q);
-    if (!snapshot.empty) {
-      return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as any;
-    }
+    const res = await fetch(`/api/short-links/by-code/${encodeURIComponent(shortCode)}`);
+    if (res.ok) return await res.json();
   } catch (error) {
-    console.warn('Could not get short link by code from Firestore:', error);
+    console.warn('Could not get short link by code from MySQL API:', error);
   }
   return null;
 };
 
 export const incrementShortLinkClick = async (id: string) => {
   try {
-    const linkRef = doc(db, 'shortLinks', id);
-    await updateDoc(linkRef, {
-      clicks: increment(1)
-    });
+    await fetch(`/api/short-links/${id}/click`, { method: 'POST' });
   } catch (error) {
-    console.warn('Could not increment short link click in Firestore:', error);
+    console.warn('Could not increment short link click in MySQL API:', error);
   }
 };

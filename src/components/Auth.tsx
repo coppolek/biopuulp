@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { auth } from '../lib/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithPopup, GoogleAuthProvider } from '../lib/auth';
 import { CheckCircle2, Sparkles, Zap, Infinity, ChevronDown } from 'lucide-react';
 
 const FAQItem = ({ question, answer }: { question: string, answer: string }) => {

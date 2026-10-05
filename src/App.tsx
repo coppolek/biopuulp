@@ -2,15 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { Toaster, toast } from 'react-hot-toast';
-import { Copy, Files, Globe, Instagram, Twitter, Youtube, Linkedin, Github, Facebook, ExternalLink, Upload, X, Image as ImageIcon } from 'lucide-react';
+import { Copy, Files, Globe, Instagram, Twitter, Youtube, Linkedin, Github, Facebook, ExternalLink, Upload, X, Image as ImageIcon, Database } from 'lucide-react';
 import PublicBioPage from './components/PublicBioPage';
 import ShortLinkRedirect from './components/ShortLinkRedirect';
 import EditorDashboard from './components/EditorDashboard';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import Auth from './components/Auth';
 import PublicView from './components/PublicView';
-import { auth } from './lib/firebase';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import AdminDatabaseManager from './components/AdminDatabaseManager';
+import { auth, onAuthStateChanged, User } from './lib/auth';
 import { getUserPages, createNewPage, savePage, getAllPages, deletePage, getAllBanners, saveBanner, deleteBanner, getUserShortLinks, createShortLink, deleteShortLink, updateShortLink } from './lib/db';
 import { BioPage, AppBanner } from './types';
 
@@ -843,7 +843,7 @@ function AdminView({ onBack }: { onBack: () => void }) {
   const [allPages, setAllPages] = useState<BioPage[]>([]);
   const [allBanners, setAllBanners] = useState<AppBanner[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'pages'|'banners'>('pages');
+  const [activeTab, setActiveTab] = useState<'pages'|'banners'|'database'>('pages');
 
   // Form states for new banner
   const [isBannerModalOpen, setIsBannerModalOpen] = useState(false);
@@ -1111,12 +1111,24 @@ function AdminView({ onBack }: { onBack: () => void }) {
           >
             Banners ({allBanners.length})
           </button>
+          <button 
+            className={`px-4 py-2 font-bold uppercase tracking-widest text-sm border-b-2 flex items-center gap-2 ${activeTab === 'database' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-400 hover:text-gray-900'}`}
+            onClick={() => setActiveTab('database')}
+          >
+            <Database className="w-4 h-4" />
+            <span>Database & Backup</span>
+          </button>
         </div>
 
         {loading ? (
           <div className="text-center py-20">
             <p className="text-gray-500 font-bold uppercase tracking-widest text-sm">Caricamento...</p>
           </div>
+        ) : activeTab === 'database' ? (
+          <AdminDatabaseManager onRefreshAllData={() => {
+            getAllPages().then(setAllPages);
+            getAllBanners().then(setAllBanners);
+          }} />
         ) : activeTab === 'pages' ? (
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
             <table className="w-full text-left">

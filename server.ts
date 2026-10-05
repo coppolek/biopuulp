@@ -4,200 +4,107 @@ import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import * as cheerio from "cheerio";
-
-// Load Firebase configuration for SSR queries
-let firebaseConfig: any = null;
-try {
-  const configPath = path.resolve(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-  }
-} catch (e) {
-  console.warn("Could not load firebase-applet-config.json:", e);
-}
-
-// In-memory cache for SSR metadata (15 seconds TTL)
-const metadataCache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache to avoid burning free tier quota
-let firestoreQuotaCircuitBreakerUntil = 0;
+import { 
+  mysqlDb, 
+  initMySQLDatabase, 
+  getDatabaseStatus, 
+  testConnection, 
+  updateDatabaseConfig, 
+  exportDatabaseBackup, 
+  generateSqlDump, 
+  importDatabaseBackup 
+} from "./server/mysql.ts";
 
 async function getShortLinkData(shortCode: string) {
-  if (!firebaseConfig) return null;
-  const cacheKey = `short_${shortCode}`;
-  const cached = metadataCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.data;
-  }
-
-  if (Date.now() < firestoreQuotaCircuitBreakerUntil) {
-    return cached ? cached.data : null;
-  }
-
   try {
-    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents:runQuery?key=${firebaseConfig.apiKey}`;
-    const body = {
-      structuredQuery: {
-        from: [{ collectionId: "shortLinks" }],
-        where: {
-          fieldFilter: {
-            field: { fieldPath: "shortCode" },
-            op: "EQUAL",
-            value: { stringValue: shortCode }
-          }
-        },
-        limit: 1
-      }
-    };
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-
-    if (res.status === 429) {
-      firestoreQuotaCircuitBreakerUntil = Date.now() + 30 * 60 * 1000;
-      console.warn("[Server] Firestore 429 quota reached. Circuit breaker active for 30m.");
-      return cached ? cached.data : null;
-    }
-
-    if (!res.ok) return cached ? cached.data : null;
-    const data = await res.json();
-    const doc = data[0]?.document;
-    if (!doc || !doc.fields) return null;
-    const f = doc.fields;
-    const result = {
-      id: doc.name.split("/").pop(),
-      title: f.title?.stringValue || "",
-      targetUrl: f.targetUrl?.stringValue || "",
-      monetized: f.monetized?.booleanValue || false,
-      shortCode: f.shortCode?.stringValue || shortCode,
+    const link = await mysqlDb.getShortLinkByCode(shortCode);
+    if (!link) return null;
+    return {
+      id: link.id,
+      title: link.title || "",
+      targetUrl: link.targetUrl || link.originalUrl || "",
+      monetized: link.monetized || false,
+      shortCode: link.shortCode || shortCode,
       seo: {
-        title: f.seo?.mapValue?.fields?.title?.stringValue || "",
-        description: f.seo?.mapValue?.fields?.description?.stringValue || "",
-        imageUrl: f.seo?.mapValue?.fields?.imageUrl?.stringValue || ""
+        title: link.seo?.title || link.title || "BioLink Pro",
+        description: link.seo?.description || link.description || "Clicca per aprire il link su BioLink Pro",
+        imageUrl: link.seo?.imageUrl || link.image || ""
       }
     };
-    metadataCache.set(cacheKey, { data: result, timestamp: Date.now() });
-    return result;
   } catch (e) {
-    console.error("Error querying shortlink for SSR:", e);
-    return cached ? cached.data : null;
+    return null;
   }
 }
 
 async function getBioPageData(slug: string) {
-  if (!firebaseConfig) return null;
-  const cacheKey = `bio_${slug}`;
-  const cached = metadataCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.data;
-  }
-
-  if (Date.now() < firestoreQuotaCircuitBreakerUntil) {
-    return cached ? cached.data : null;
-  }
-
   try {
-    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents:runQuery?key=${firebaseConfig.apiKey}`;
-    const body = {
-      structuredQuery: {
-        from: [{ collectionId: "pages" }],
-        where: {
-          fieldFilter: {
-            field: { fieldPath: "slug" },
-            op: "EQUAL",
-            value: { stringValue: slug }
-          }
-        },
-        limit: 1
-      }
-    };
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-
-    if (res.status === 429) {
-      firestoreQuotaCircuitBreakerUntil = Date.now() + 30 * 60 * 1000;
-      console.warn("[Server] Firestore 429 quota reached. Circuit breaker active for 30m.");
-      return cached ? cached.data : null;
-    }
-
-    if (!res.ok) return cached ? cached.data : null;
-    const data = await res.json();
-    const doc = data[0]?.document;
-    if (!doc || !doc.fields) return null;
-    const f = doc.fields;
-    const result = {
-      slug: f.slug?.stringValue || slug,
+    const page = await mysqlDb.getPageBySlug(slug);
+    if (!page) return null;
+    return {
+      slug: page.slug || slug,
       profile: {
-        displayName: f.profile?.mapValue?.fields?.displayName?.stringValue || f.profile?.mapValue?.fields?.name?.stringValue || "",
-        bio: f.profile?.mapValue?.fields?.bio?.stringValue || "",
-        avatarUrl: f.profile?.mapValue?.fields?.avatarUrl?.stringValue || ""
+        displayName: page.profile?.displayName || page.profile?.name || `@${slug}`,
+        bio: page.profile?.bio || "",
+        avatarUrl: page.profile?.avatarUrl || ""
       },
       seo: {
-        title: f.seo?.mapValue?.fields?.title?.stringValue || "",
-        description: f.seo?.mapValue?.fields?.description?.stringValue || "",
-        imageUrl: f.seo?.mapValue?.fields?.imageUrl?.stringValue || ""
+        title: page.seo?.title || page.profile?.displayName || page.profile?.name || `@${slug}`,
+        description: page.seo?.description || page.profile?.bio || "Visita la mia pagina su BioLink Pro",
+        imageUrl: page.seo?.imageUrl || page.profile?.avatarUrl || ""
       }
     };
-    metadataCache.set(cacheKey, { data: result, timestamp: Date.now() });
-    return result;
   } catch (e) {
-    console.error("Error querying bio page for SSR:", e);
-    return cached ? cached.data : null;
+    return null;
   }
 }
 
-const reservedPaths = new Set([
-  "api", "admin", "login", "editor", "analytics", "assets", "favicon.ico", "robots.txt", "ads.txt", "s", "og-default.png"
-]);
-
-function isValidSlug(slug: string) {
-  if (!slug || reservedPaths.has(slug)) return false;
-  if (slug.includes(".") || slug.startsWith("@") || slug.startsWith("_")) return false;
-  return /^[a-zA-Z0-9_-]+$/.test(slug);
+function isValidSlug(slug: string): boolean {
+  if (!slug) return false;
+  // Ignore static assets, api routes, or files with extensions
+  if (slug.startsWith("api") || slug.startsWith("s/") || slug.includes(".") || slug === "favicon.ico") {
+    return false;
+  }
+  return true;
 }
 
-function getOrigin(req: express.Request) {
-  const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
-  const host = (req.headers["x-forwarded-host"] as string) || req.get("host") || "localhost:3000";
+function getOrigin(req: express.Request): string {
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
   return `${proto}://${host}`;
 }
 
-function injectMetaTags(html: string, meta: {
-  title: string;
-  description: string;
-  imageUrl: string;
-  url: string;
-}) {
-  const escapeAttr = (str: string) =>
-    (str || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const escapeContent = (str: string) =>
-    (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function escapeHtml(str: string): string {
+  if (!str) return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function injectMetaTags(html: string, meta: { title: string; description: string; imageUrl?: string; url: string }): string {
+  const escapedTitle = escapeHtml(meta.title);
+  const escapedDesc = escapeHtml(meta.description);
+  const escapedUrl = escapeHtml(meta.url);
+  const escapedImage = meta.imageUrl ? escapeHtml(meta.imageUrl) : "";
 
   const newTags = `
-    <title>${escapeContent(meta.title)}</title>
-    <meta name="description" content="${escapeAttr(meta.description)}" />
-    
-    <!-- OpenGraph Social Tags -->
+    <!-- Dynamic Server-Side Injected OpenGraph & Twitter Meta Tags -->
+    <title>${escapedTitle}</title>
+    <meta name="description" content="${escapedDesc}" />
+    <meta property="og:title" content="${escapedTitle}" />
+    <meta property="og:description" content="${escapedDesc}" />
+    <meta property="og:url" content="${escapedUrl}" />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="BioLink Pro" />
-    <meta property="og:title" content="${escapeAttr(meta.title)}" />
-    <meta property="og:description" content="${escapeAttr(meta.description)}" />
-    <meta property="og:image" content="${escapeAttr(meta.imageUrl)}" />
-    <meta property="og:image:alt" content="${escapeAttr(meta.title)}" />
-    <meta property="og:url" content="${escapeAttr(meta.url)}" />
-    
-    <!-- Twitter Social Cards -->
+    ${escapedImage ? `<meta property="og:image" content="${escapedImage}" />` : ""}
+    ${escapedImage ? `<meta property="og:image:alt" content="${escapedTitle}" />` : ""}
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${escapeAttr(meta.title)}" />
-    <meta name="twitter:description" content="${escapeAttr(meta.description)}" />
-    <meta name="twitter:image" content="${escapeAttr(meta.imageUrl)}" />
+    <meta name="twitter:title" content="${escapedTitle}" />
+    <meta name="twitter:description" content="${escapedDesc}" />
+    ${escapedImage ? `<meta name="twitter:image" content="${escapedImage}" />` : ""}
   `;
 
-  // Strip placeholder tags if present
   let cleaned = html
     .replace(/<title>[\s\S]*?<\/title>/gi, "")
     .replace(/<meta\s+name=["']description["'][^>]*>/gi, "")
@@ -207,134 +114,6 @@ function injectMetaTags(html: string, meta: {
   return cleaned.replace("</head>", `${newTags}\n  </head>`);
 }
 
-async function startServer() {
-  const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-
-  app.use(express.json());
-
-  // API routes FIRST
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
-  });
-
-  // Dedicated Open Graph Image endpoints for Social Networks (Facebook, WhatsApp, Twitter, etc.)
-  app.get("/api/og-image/s/:shortCode", async (req, res) => {
-    try {
-      const link = await getShortLinkData(req.params.shortCode);
-      const rawImage = link?.seo?.imageUrl;
-      if (rawImage && rawImage.startsWith("data:")) {
-        const matches = rawImage.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-        if (matches) {
-          const mimeType = matches[1];
-          const buffer = Buffer.from(matches[2], "base64");
-          res.setHeader("Content-Type", mimeType);
-          res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
-          return res.send(buffer);
-        }
-      } else if (rawImage && rawImage.startsWith("http")) {
-        return res.redirect(rawImage);
-      }
-      return res.sendFile(path.resolve(process.cwd(), "public", "og-default.png"));
-    } catch (e) {
-      return res.sendFile(path.resolve(process.cwd(), "public", "og-default.png"));
-    }
-  });
-
-  app.get("/api/og-image/bio/:slug", async (req, res) => {
-    try {
-      const page = await getBioPageData(req.params.slug);
-      const rawImage = page?.seo?.imageUrl || page?.profile?.avatarUrl;
-      if (rawImage && rawImage.startsWith("data:")) {
-        const matches = rawImage.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-        if (matches) {
-          const mimeType = matches[1];
-          const buffer = Buffer.from(matches[2], "base64");
-          res.setHeader("Content-Type", mimeType);
-          res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
-          return res.send(buffer);
-        }
-      } else if (rawImage && rawImage.startsWith("http")) {
-        return res.redirect(rawImage);
-      }
-      return res.sendFile(path.resolve(process.cwd(), "public", "og-default.png"));
-    } catch (e) {
-      return res.sendFile(path.resolve(process.cwd(), "public", "og-default.png"));
-    }
-  });
-  
-  app.get("/api/careerjet", async (req, res) => {
-    try {
-      const { keywords, location, maxResults = 5, affid: queryAffid, apiKey } = req.query;
-      const affid = queryAffid || process.env.CAREERJET_AFFID || "22222222222222222222222222222222";
-      const rawIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || "1.1.1.1";
-      const userIp = rawIp.split(",")[0].trim();
-      const userAgent = (req.headers['user-agent'] as string) || "Mozilla/5.0";
-
-      let data: any = null;
-      let fallbackReason: string | null = null;
-
-      // 1. If apiKey is provided, attempt v4 query on search.api.careerjet.net
-      if (apiKey && typeof apiKey === "string" && apiKey.trim().length > 0) {
-        try {
-          const v4Url = `https://search.api.careerjet.net/v4/query?locale_code=it_IT&keywords=${encodeURIComponent((keywords as string) || "")}&location=${encodeURIComponent((location as string) || "")}&affid=${affid}&user_ip=${encodeURIComponent(userIp)}&user_agent=${encodeURIComponent(userAgent)}`;
-          const v4Res = await fetch(v4Url, {
-            headers: {
-              "Referer": "https://example.com",
-              "Authorization": "Basic " + Buffer.from(apiKey.trim() + ":").toString("base64")
-            }
-          });
-          const v4Data = await v4Res.json().catch(() => null);
-          if (v4Res.ok && v4Data && Array.isArray(v4Data.jobs) && v4Data.jobs.length > 0) {
-            data = v4Data;
-          } else {
-            const errObj = v4Data?.error;
-            fallbackReason = typeof errObj === "object" && errObj !== null 
-              ? (errObj.message || JSON.stringify(errObj))
-              : (typeof errObj === "string" ? errObj : `Status ${v4Res.status}`);
-          }
-        } catch (v4Err: any) {
-          fallbackReason = v4Err?.message || "v4 fetch error";
-        }
-      }
-
-      // 2. Fallback to public search endpoint if v4 was not used or failed
-      if (!data) {
-        try {
-          const publicUrl = `http://public.api.careerjet.net/search?locale_code=it_IT&keywords=${encodeURIComponent((keywords as string) || "")}&location=${encodeURIComponent((location as string) || "")}&affid=${affid}&user_ip=${encodeURIComponent(userIp)}&user_agent=${encodeURIComponent(userAgent)}`;
-          const publicRes = await fetch(publicUrl, {
-            headers: {
-              "Referer": "https://example.com"
-            }
-          });
-          const publicData = await publicRes.json().catch(() => null);
-          if (publicRes.ok && publicData && Array.isArray(publicData.jobs)) {
-            data = publicData;
-          } else {
-            data = publicData || { jobs: [] };
-          }
-        } catch (pubErr: any) {
-          data = { jobs: [] };
-        }
-      }
-
-      if (data && Array.isArray(data.jobs)) {
-        const limit = parseInt(maxResults as string) || 5;
-        data.jobs = data.jobs.slice(0, Math.min(Math.max(limit, 1), 10));
-      } else {
-        data = { jobs: [] };
-      }
-
-      if (fallbackReason) {
-        data.notice = `Risultati caricati via API pubblica (v4: ${fallbackReason})`;
-      }
-      res.json(data);
-    } catch (error: any) {
-      res.json({ jobs: [], error: error?.message || "Failed to fetch jobs" });
-    }
-  });
-
-  
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function rewriteArticleWithGemini({
@@ -445,7 +224,456 @@ ${rawContent.slice(0, 10000)}
   throw lastErr || new Error("Tutti i modelli Gemini non sono al momento disponibili.");
 }
 
+async function startServer() {
+  const app = express();
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+  app.use(express.json({ limit: "50mb" }));
+
+  // Initialize MySQL Connection & Schema
+  initMySQLDatabase().catch(err => {
+    console.warn("[MySQL] Async initialization note:", err);
+  });
+
+  // API health
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", database: "mysql" });
+  });
+
+  // --- Database Admin & Management Endpoints ---
+  app.get("/api/admin/db/status", (req, res) => {
+    try {
+      res.json(getDatabaseStatus());
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.post("/api/admin/db/test", async (req, res) => {
+    try {
+      const result = await testConnection(req.body);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e?.message });
+    }
+  });
+
+  app.post("/api/admin/db/config", async (req, res) => {
+    try {
+      const result = await updateDatabaseConfig(req.body);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e?.message });
+    }
+  });
+
+  app.get("/api/admin/db/backup", async (req, res) => {
+    try {
+      const format = req.query.format === 'sql' ? 'sql' : 'json';
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      if (format === 'sql') {
+        const sql = await generateSqlDump();
+        res.setHeader('Content-Type', 'application/sql');
+        res.setHeader('Content-Disposition', `attachment; filename="biolink_backup_${timestamp}.sql"`);
+        return res.send(sql);
+      } else {
+        const backup = await exportDatabaseBackup();
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="biolink_backup_${timestamp}.json"`);
+        return res.send(JSON.stringify(backup, null, 2));
+      }
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Errore durante la generazione del backup" });
+    }
+  });
+
+  app.post("/api/admin/db/import", async (req, res) => {
+    try {
+      const { data, mode = 'merge' } = req.body;
+      if (!data) {
+        return res.status(400).json({ error: "Dati di backup mancanti" });
+      }
+      const result = await importDatabaseBackup(data, mode);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Errore durante l'importazione" });
+    }
+  });
+
+  // --- MySQL Authentication & Users ---
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email) return res.status(400).json({ error: "Email richiesta" });
+      const existing = await mysqlDb.findUserByEmail(email);
+      if (existing) {
+        return res.json({ user: { uid: existing.id, email: existing.email } });
+      }
+      const newUser = {
+        id: `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        email,
+        password_hash: password || 'default_hash'
+      };
+      await mysqlDb.createUser(newUser);
+      res.json({ user: { uid: newUser.id, email: newUser.email } });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Errore durante la registrazione" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email) return res.status(400).json({ error: "Email richiesta" });
+      let user = await mysqlDb.findUserByEmail(email);
+      if (!user) {
+        user = {
+          id: `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          email,
+          password_hash: password || 'default_hash'
+        };
+        await mysqlDb.createUser(user);
+      }
+      res.json({ user: { uid: user.id, email: user.email } });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Errore durante l'accesso" });
+    }
+  });
+
+  // --- MySQL Pages CRUD ---
+  app.get("/api/pages", async (req, res) => {
+    try {
+      const userId = req.query.userId as string;
+      if (!userId) return res.json([]);
+      const pages = await mysqlDb.getUserPages(userId);
+      res.json(pages);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Errore lettura pagine" });
+    }
+  });
+
+  app.get("/api/pages/all", async (req, res) => {
+    try {
+      const pages = await mysqlDb.getAllPages();
+      res.json(pages);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Errore lettura pagine" });
+    }
+  });
+
+  app.get("/api/pages/by-slug/:slug", async (req, res) => {
+    try {
+      const page = await mysqlDb.getPageBySlug(req.params.slug);
+      if (!page) return res.status(404).json({ error: "Pagina non trovata" });
+      res.json(page);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Errore lettura pagina" });
+    }
+  });
+
+  app.post("/api/pages", async (req, res) => {
+    try {
+      await mysqlDb.savePage(req.body);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Errore salvataggio pagina" });
+    }
+  });
+
+  app.delete("/api/pages/:id", async (req, res) => {
+    try {
+      await mysqlDb.deletePage(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Errore eliminazione pagina" });
+    }
+  });
+
+  // --- MySQL Analytics ---
+  app.get("/api/analytics/:pageId", async (req, res) => {
+    try {
+      const data = await mysqlDb.getPageAnalytics(req.params.pageId);
+      res.json(data || {});
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.post("/api/analytics/:pageId", async (req, res) => {
+    try {
+      await mysqlDb.savePageAnalytics(req.params.pageId, req.body);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.post("/api/analytics/:pageId/view", async (req, res) => {
+    try {
+      await mysqlDb.incrementPageView(req.params.pageId);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.post("/api/analytics/:pageId/click", async (req, res) => {
+    try {
+      const { linkId } = req.body;
+      const analytics = (await mysqlDb.getPageAnalytics(req.params.pageId)) || { pageId: req.params.pageId, dailyStats: [] };
+      const today = new Date().toISOString().split('T')[0];
+      if (!analytics.dailyStats) analytics.dailyStats = [];
+      const stat = analytics.dailyStats.find((s: any) => s.date === today);
+      if (stat) {
+        stat.clicks = (stat.clicks || 0) + 1;
+      } else {
+        analytics.dailyStats.push({ date: today, views: 0, clicks: 1 });
+      }
+      await mysqlDb.savePageAnalytics(req.params.pageId, analytics);
+
+      const all = await mysqlDb.getAllPages();
+      const page = all.find((p: any) => p.id === req.params.pageId || p.slug === req.params.pageId);
+      if (page && page.links) {
+        const link = page.links.find((l: any) => l.id === linkId);
+        if (link) {
+          link.clicks = (link.clicks || 0) + 1;
+          await mysqlDb.savePage(page);
+        }
+      }
+
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  // --- MySQL Subscribers ---
+  app.get("/api/subscribers", async (req, res) => {
+    try {
+      const pageId = req.query.pageId as string;
+      const subs = await mysqlDb.getPageSubscribers(pageId);
+      res.json(subs);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.post("/api/subscribers", async (req, res) => {
+    try {
+      const { pageId, email } = req.body;
+      const sub = {
+        id: `sub_${Date.now()}`,
+        pageId,
+        email,
+        subscribedAt: new Date().toISOString()
+      };
+      await mysqlDb.addSubscriber(sub);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  // --- MySQL Short Links ---
+  app.get("/api/short-links", async (req, res) => {
+    try {
+      const userId = req.query.userId as string;
+      const links = await mysqlDb.getUserShortLinks(userId);
+      res.json(links);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.post("/api/short-links", async (req, res) => {
+    try {
+      const id = `link_${Date.now()}`;
+      const link = { id, ...req.body, clicks: 0, createdAt: new Date().toISOString() };
+      await mysqlDb.saveShortLink(link);
+      res.json(link);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.put("/api/short-links/:id", async (req, res) => {
+    try {
+      await mysqlDb.saveShortLink({ id: req.params.id, ...req.body });
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.delete("/api/short-links/:id", async (req, res) => {
+    try {
+      await mysqlDb.deleteShortLink(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.get("/api/short-links/by-code/:code", async (req, res) => {
+    try {
+      const link = await mysqlDb.getShortLinkByCode(req.params.code);
+      if (!link) return res.status(404).json({ error: "Link non trovato" });
+      res.json(link);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.post("/api/short-links/:id/click", async (req, res) => {
+    try {
+      await mysqlDb.incrementShortLinkClick(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  // --- MySQL Banners ---
+  app.get("/api/banners", async (req, res) => {
+    try {
+      const banners = await mysqlDb.getAllBanners();
+      res.json(banners);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.post("/api/banners", async (req, res) => {
+    try {
+      await mysqlDb.saveBanner(req.body);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.delete("/api/banners/:id", async (req, res) => {
+    try {
+      await mysqlDb.deleteBanner(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  // Dedicated Open Graph Image endpoints for Social Networks (Facebook, WhatsApp, Twitter, etc.)
+  app.get("/api/og-image/s/:shortCode", async (req, res) => {
+    try {
+      const link = await getShortLinkData(req.params.shortCode);
+      const rawImage = link?.seo?.imageUrl;
+      if (rawImage && rawImage.startsWith("data:")) {
+        const matches = rawImage.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches) {
+          const mimeType = matches[1];
+          const buffer = Buffer.from(matches[2], "base64");
+          res.setHeader("Content-Type", mimeType);
+          res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
+          return res.send(buffer);
+        }
+      } else if (rawImage && rawImage.startsWith("http")) {
+        return res.redirect(rawImage);
+      }
+      return res.sendFile(path.resolve(process.cwd(), "public", "og-default.png"));
+    } catch (e) {
+      return res.sendFile(path.resolve(process.cwd(), "public", "og-default.png"));
+    }
+  });
+
+  app.get("/api/og-image/bio/:slug", async (req, res) => {
+    try {
+      const page = await getBioPageData(req.params.slug);
+      const rawImage = page?.seo?.imageUrl || page?.profile?.avatarUrl;
+      if (rawImage && rawImage.startsWith("data:")) {
+        const matches = rawImage.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches) {
+          const mimeType = matches[1];
+          const buffer = Buffer.from(matches[2], "base64");
+          res.setHeader("Content-Type", mimeType);
+          res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
+          return res.send(buffer);
+        }
+      } else if (rawImage && rawImage.startsWith("http")) {
+        return res.redirect(rawImage);
+      }
+      return res.sendFile(path.resolve(process.cwd(), "public", "og-default.png"));
+    } catch (e) {
+      return res.sendFile(path.resolve(process.cwd(), "public", "og-default.png"));
+    }
+  });
+  
+  app.get("/api/careerjet", async (req, res) => {
+    try {
+      const { keywords, location, maxResults = 5, affid: queryAffid, apiKey } = req.query;
+      const affid = queryAffid || process.env.CAREERJET_AFFID || "22222222222222222222222222222222";
+      const rawIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || "1.1.1.1";
+      const userIp = rawIp.split(",")[0].trim();
+      const userAgent = (req.headers['user-agent'] as string) || "Mozilla/5.0";
+
+      let data: any = null;
+      let fallbackReason: string | null = null;
+
+      if (apiKey && typeof apiKey === "string" && apiKey.trim().length > 0) {
+        try {
+          const v4Url = `https://search.api.careerjet.net/v4/query?locale_code=it_IT&keywords=${encodeURIComponent((keywords as string) || "")}&location=${encodeURIComponent((location as string) || "")}&affid=${affid}&user_ip=${encodeURIComponent(userIp)}&user_agent=${encodeURIComponent(userAgent)}`;
+          const v4Res = await fetch(v4Url, {
+            headers: {
+              "Referer": "https://example.com",
+              "Authorization": "Basic " + Buffer.from(apiKey.trim() + ":").toString("base64")
+            }
+          });
+          const v4Data = await v4Res.json().catch(() => null);
+          if (v4Res.ok && v4Data && Array.isArray(v4Data.jobs) && v4Data.jobs.length > 0) {
+            data = v4Data;
+          } else {
+            const errObj = v4Data?.error;
+            fallbackReason = typeof errObj === "object" && errObj !== null 
+              ? (errObj.message || JSON.stringify(errObj))
+              : (typeof errObj === "string" ? errObj : `Status ${v4Res.status}`);
+          }
+        } catch (v4Err: any) {
+          fallbackReason = v4Err?.message || "v4 fetch error";
+        }
+      }
+
+      if (!data) {
+        try {
+          const publicUrl = `http://public.api.careerjet.net/search?locale_code=it_IT&keywords=${encodeURIComponent((keywords as string) || "")}&location=${encodeURIComponent((location as string) || "")}&affid=${affid}&user_ip=${encodeURIComponent(userIp)}&user_agent=${encodeURIComponent(userAgent)}`;
+          const publicRes = await fetch(publicUrl, {
+            headers: {
+              "Referer": "https://example.com"
+            }
+          });
+          const publicData = await publicRes.json().catch(() => null);
+          if (publicRes.ok && publicData && Array.isArray(publicData.jobs)) {
+            data = publicData;
+          } else {
+            data = publicData || { jobs: [] };
+          }
+        } catch (pubErr: any) {
+          data = { jobs: [] };
+        }
+      }
+
+      if (data && Array.isArray(data.jobs)) {
+        const limit = parseInt(maxResults as string) || 5;
+        data.jobs = data.jobs.slice(0, Math.min(Math.max(limit, 1), 10));
+      } else {
+        data = { jobs: [] };
+      }
+
+      if (fallbackReason) {
+        data.notice = `Risultati caricati via API pubblica (v4: ${fallbackReason})`;
+      }
+      res.json(data);
+    } catch (error: any) {
+      res.json({ jobs: [], error: error?.message || "Failed to fetch jobs" });
+    }
+  });
 
   // Endpoint to rewrite & make any article draft unique with Gemini
   app.post("/api/ai/rewrite", async (req, res) => {
@@ -472,7 +700,6 @@ ${rawContent.slice(0, 10000)}
       res.status(500).json({ error: error?.message || "Impossibile elaborare l'articolo con Gemini" });
     }
   });
-
 
   app.post("/api/scrape", async (req, res) => {
     try {
@@ -548,12 +775,10 @@ ${rawContent.slice(0, 10000)}
                   $('link[rel="icon"]').attr('href') ||
                   '';
 
-      // Parse structured data (JSON-LD) for better metadata, especially for Amazon
       $('script[type="application/ld+json"]').each((i, el) => {
         try {
           const data = JSON.parse($(el).html());
           if (data) {
-            // Can be array of objects or single object
             const items = Array.isArray(data) ? data : [data];
             for (const item of items) {
               if (item.image) {
@@ -569,22 +794,19 @@ ${rawContent.slice(0, 10000)}
       });
 
       if (!image) {
-        // try to find first image with valid src
         $('img').each((i, el) => {
           const src = $(el).attr('src');
           if (src && !src.startsWith('data:')) {
             image = src;
-            return false; // break
+            return false;
           }
         });
       }
 
-      // Amazon fallback if blocked or image missing
       if (url.includes('amazon.') && (!image || response.status === 503)) {
         const match = url.match(/(?:dp|o|ASIN|gp\/product)\/([a-zA-Z0-9]{10})/);
         if (match) {
           const asin = match[1];
-          // Try to get Amazon thumbnail image using a common pattern
           if (!image) {
              image = `https://images-na.ssl-images-amazon.com/images/P/${asin}.01._SCLZZZZZZZ_.jpg`;
           }
@@ -666,7 +888,6 @@ ${rawContent.slice(0, 10000)}
         markdownContent += sourceCredit;
       }
 
-      // Elaborate and make article unique with Gemini if requested
       if (elaborateWithGemini && (articleText || description || title)) {
         try {
           const aiResult = await rewriteArticleWithGemini({
@@ -694,7 +915,6 @@ ${rawContent.slice(0, 10000)}
           });
         } catch (aiErr) {
           console.error("Gemini elaboration error during scrape:", aiErr);
-          // Fallback to raw scraped content if Gemini encounters transient error
         }
       }
 
