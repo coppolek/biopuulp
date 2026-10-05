@@ -758,16 +758,19 @@ export default function AdminDatabaseManager({ onRefreshAllData }: { onRefreshAl
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-gray-600 mb-1">
-                    Password Wallet (opzionale, se impostata al download)
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-gray-700 mb-1">
+                    Password del Wallet (scelta su OCI al download)
                   </label>
                   <input
                     type="password"
                     value={walletPassword}
                     onChange={e => setWalletPassword(e.target.value)}
                     placeholder="Password del file zip del wallet"
-                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-mono outline-none"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 focus:border-red-600 rounded-xl text-xs font-mono outline-none"
                   />
+                  <span className="text-[10px] text-gray-500 mt-1 block">
+                    Inserisci la password che Oracle Cloud ti ha chiesto al momento di scaricare il file zip. Se è uguale alla password ADMIN del database, verrà usata automaticamente.
+                  </span>
                 </div>
                 {fullStatus?.oracle.config.availableServices && fullStatus.oracle.config.availableServices.length > 0 && (
                   <div>

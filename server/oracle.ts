@@ -1,6 +1,7 @@
 import oracledb from 'oracledb';
 import fs from 'fs';
 import path from 'path';
+import tls from 'tls';
 import AdmZip from 'adm-zip';
 
 // Configure oracledb thin mode defaults
@@ -30,12 +31,12 @@ let activeConfig: OracleConfig = {
   password: process.env.ORACLE_PASSWORD || '',
   host: process.env.ORACLE_HOST || 'adb.eu-turin-1.oraclecloud.com',
   port: Number(process.env.ORACLE_PORT) || 1522,
-  serviceName: process.env.ORACLE_SERVICE_NAME || 'gshvtnzld55j0j8l_tp.adb.oraclecloud.com',
+  serviceName: process.env.ORACLE_SERVICE_NAME || 'g4baf80d64d08cb_gshvtnzld55j0j8l_tp.adb.oraclecloud.com',
   connectString: process.env.ORACLE_CONNECT_STRING || '',
   protocol: 'tcps',
   walletLocation: fs.existsSync(WALLET_DIR) ? WALLET_DIR : '',
   walletPassword: process.env.ORACLE_WALLET_PASSWORD || '',
-  useWallet: fs.existsSync(WALLET_DIR)
+  useWallet: false
 };
 
 let pool: oracledb.Pool | null = null;
@@ -45,8 +46,47 @@ let serverBanner: string | null = null;
 let availableServices: string[] = [];
 let tnsEntries: Record<string, string> = {};
 
+export function verifyWalletPassword(walletDir: string, password?: string): boolean {
+  if (!password) return false;
+  try {
+    const p12Path = path.join(walletDir, 'ewallet.p12');
+    if (!fs.existsSync(p12Path)) return false;
+    const p12 = fs.readFileSync(p12Path);
+    tls.createSecureContext({ pfx: p12, passphrase: password });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+export function getEffectiveWallet(cfg: OracleConfig): { useWallet: boolean; password?: string; location?: string; error?: string } {
+  const dir = cfg.walletLocation || WALLET_DIR;
+  if (!cfg.useWallet || !fs.existsSync(dir)) {
+    return { useWallet: false };
+  }
+
+  // 1. Try explicit wallet password
+  if (cfg.walletPassword && verifyWalletPassword(dir, cfg.walletPassword)) {
+    return { useWallet: true, location: dir, password: cfg.walletPassword };
+  }
+
+  // 2. Try database password as wallet password fallback
+  if (cfg.password && verifyWalletPassword(dir, cfg.password)) {
+    return { useWallet: true, location: dir, password: cfg.password };
+  }
+
+  // 3. Password invalid or missing
+  return {
+    useWallet: false,
+    error: 'Password del Wallet non valida: inserisci la password impostata durante il download del file zip (Wallet_GSHVTNZLD55J0J8L.zip) da Oracle Cloud.'
+  };
+}
+
 function formatOracleError(err: any): string {
   const msg = err?.message || String(err);
+  if (msg.includes('bad decrypt') || msg.includes('1C800064') || msg.includes('mac verify failure')) {
+    return 'Password del Wallet non corretta: la password per decifrare il file ewallet.p12 non corrisponde. Inserisci la password scelta su Oracle Cloud al momento del download del wallet.';
+  }
   if (msg.includes('NJS-518') || msg.includes('ORA-12514')) {
     return 'Nome Servizio non trovato o errato su Oracle Cloud. Per risolvere: in Oracle Cloud clicca "Connessione al database", copia la "Stringa di connessione" completa (TNS) e incollala nell\'apposito campo, oppure scarica il Wallet .zip.';
   }
@@ -133,10 +173,11 @@ export async function getOraclePool(): Promise<oracledb.Pool | null> {
         poolTimeout: 60
       };
 
-      if (activeConfig.useWallet && activeConfig.walletLocation && fs.existsSync(activeConfig.walletLocation)) {
-        poolAttrs.walletLocation = activeConfig.walletLocation;
-        if (activeConfig.walletPassword) {
-          poolAttrs.walletPassword = activeConfig.walletPassword;
+      const walletInfo = getEffectiveWallet(activeConfig);
+      if (walletInfo.useWallet && walletInfo.location) {
+        poolAttrs.walletLocation = walletInfo.location;
+        if (walletInfo.password) {
+          poolAttrs.walletPassword = walletInfo.password;
         }
       }
 
@@ -286,10 +327,21 @@ export async function testOracleConnection(config: OracleConfig) {
       connectString: connStr
     };
 
-    if (config.useWallet && config.walletLocation && fs.existsSync(config.walletLocation)) {
-      connAttrs.walletLocation = config.walletLocation;
-      if (config.walletPassword) {
-        connAttrs.walletPassword = config.walletPassword;
+    if (config.useWallet) {
+      const walletInfo = getEffectiveWallet(config);
+      if (walletInfo.error) {
+        return {
+          success: false,
+          message: walletInfo.error,
+          code: 'WALLET_PASSWORD_INVALID',
+          latencyMs: Date.now() - start
+        };
+      }
+      if (walletInfo.useWallet && walletInfo.location) {
+        connAttrs.walletLocation = walletInfo.location;
+        if (walletInfo.password) {
+          connAttrs.walletPassword = walletInfo.password;
+        }
       }
     }
 
