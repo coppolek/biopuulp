@@ -544,6 +544,41 @@ if (Object.keys(oracleLocalStore.banners).length === 0) {
   persistOracleLocalStore();
 }
 
+const DEFAULT_THEME_FALLBACK = {
+  backgroundColor: '#ffffff',
+  textColor: '#1A1A1A',
+  buttonColor: '#000000',
+  buttonTextColor: '#ffffff',
+  buttonRadius: 'lg',
+  fontFamily: 'sans-serif',
+  buttonStyle: 'solid'
+};
+
+const THEME_PRESETS_FALLBACK: Record<string, any> = {
+  minimal: { backgroundColor: '#f9fafb', textColor: '#111827', buttonColor: '#000000', buttonTextColor: '#ffffff', fontFamily: 'monospace', backgroundStyle: 'dots', buttonRadius: 'none' },
+  dark: { backgroundColor: '#000000', textColor: '#ffffff', buttonColor: '#1f2937', buttonTextColor: '#ffffff', fontFamily: 'sans-serif', backgroundStyle: 'solid', buttonRadius: 'lg' },
+  light: { backgroundColor: '#ffffff', textColor: '#000000', buttonColor: '#f3f4f6', buttonTextColor: '#000000', fontFamily: 'sans-serif', backgroundStyle: 'solid', buttonRadius: 'lg' }
+};
+
+export function normalizePage(raw: any) {
+  if (!raw) return null;
+  const p = typeof raw === 'string' ? JSON.parse(raw) : { ...raw };
+  if (!Array.isArray(p.links)) p.links = [];
+  if (!Array.isArray(p.socials)) p.socials = [];
+  if (!Array.isArray(p.modules)) p.modules = [];
+  if (!p.profile || typeof p.profile !== 'object') {
+    p.profile = {
+      name: `@${p.slug || 'creator'}`,
+      bio: '',
+      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'
+    };
+  }
+  if (!p.theme || typeof p.theme !== 'object') {
+    p.theme = THEME_PRESETS_FALLBACK[p.theme] || DEFAULT_THEME_FALLBACK;
+  }
+  return p;
+}
+
 // Data Access Layer for Oracle Database
 export const oracleDb = {
   async isAvailable() {
@@ -558,10 +593,10 @@ export const oracleDb = {
         const conn = await p.getConnection();
         try {
           const res: any = await conn.execute(`SELECT data FROM pages ORDER BY updated_at DESC`);
-          const pages = (res.rows || []).map((row: any) => JSON.parse(row.DATA || row.data));
-          pages.forEach((pg: any) => { oracleLocalStore.pages[pg.id] = pg; });
+          const pages = (res.rows || []).map((row: any) => normalizePage(JSON.parse(row.DATA || row.data)));
+          pages.forEach((pg: any) => { if (pg) oracleLocalStore.pages[pg.id] = pg; });
           persistOracleLocalStore();
-          return pages;
+          return pages.filter(Boolean);
         } finally {
           await conn.close();
         }
@@ -569,7 +604,10 @@ export const oracleDb = {
         console.warn('[Oracle] getAllPages remote note:', err?.message || err);
       }
     }
-    return Object.values(oracleLocalStore.pages).sort((a: any, b: any) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    return Object.values(oracleLocalStore.pages)
+      .map(normalizePage)
+      .filter(Boolean)
+      .sort((a: any, b: any) => (b.updatedAt || 0) - (a.updatedAt || 0));
   },
 
   async getUserPages(userId: string): Promise<any[]> {
@@ -582,10 +620,10 @@ export const oracleDb = {
             `SELECT data FROM pages WHERE user_id = :userId ORDER BY updated_at DESC`,
             [userId]
           );
-          const pages = (res.rows || []).map((row: any) => JSON.parse(row.DATA || row.data));
-          pages.forEach((pg: any) => { oracleLocalStore.pages[pg.id] = pg; });
+          const pages = (res.rows || []).map((row: any) => normalizePage(JSON.parse(row.DATA || row.data)));
+          pages.forEach((pg: any) => { if (pg) oracleLocalStore.pages[pg.id] = pg; });
           persistOracleLocalStore();
-          return pages;
+          return pages.filter(Boolean);
         } finally {
           await conn.close();
         }
@@ -593,7 +631,10 @@ export const oracleDb = {
         console.warn('[Oracle] getUserPages remote note:', err?.message || err);
       }
     }
-    return Object.values(oracleLocalStore.pages).filter((pg: any) => pg.userId === userId || (!pg.userId && userId === 'admin'));
+    return Object.values(oracleLocalStore.pages)
+      .filter((pg: any) => pg.userId === userId || (!pg.userId && userId === 'admin'))
+      .map(normalizePage)
+      .filter(Boolean);
   },
 
   async getPageBySlug(slug: string): Promise<any | null> {
@@ -608,10 +649,12 @@ export const oracleDb = {
             [cleanSlug]
           );
           if (res.rows && res.rows.length > 0) {
-            const page = JSON.parse(res.rows[0].DATA || res.rows[0].data);
-            oracleLocalStore.pages[page.id] = page;
-            persistOracleLocalStore();
-            return page;
+            const page = normalizePage(JSON.parse(res.rows[0].DATA || res.rows[0].data));
+            if (page) {
+              oracleLocalStore.pages[page.id] = page;
+              persistOracleLocalStore();
+              return page;
+            }
           }
         } finally {
           await conn.close();
@@ -620,7 +663,8 @@ export const oracleDb = {
         console.warn('[Oracle] getPageBySlug remote note:', err?.message || err);
       }
     }
-    return Object.values(oracleLocalStore.pages).find((pg: any) => (pg.slug || '').toLowerCase() === cleanSlug) || null;
+    const found = Object.values(oracleLocalStore.pages).find((pg: any) => (pg.slug || '').toLowerCase() === cleanSlug) || null;
+    return normalizePage(found);
   },
 
   async savePage(page: any): Promise<void> {
@@ -697,7 +741,33 @@ export const oracleDb = {
   },
 
   // Short Links
-  async getUserShortLinks(userId: string): Promise<any[]> {
+  async getAllShortLinks(): Promise<any[]> {
+    const p = await getOraclePool();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const res: any = await conn.execute(
+            `SELECT data FROM short_links ORDER BY created_at DESC`
+          );
+          const links = (res.rows || []).map((row: any) => JSON.parse(row.DATA || row.data));
+          links.forEach((l: any) => { oracleLocalStore.shortLinks[l.id] = l; });
+          persistOracleLocalStore();
+          return links;
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] getAllShortLinks remote note:', err?.message || err);
+      }
+    }
+    return Object.values(oracleLocalStore.shortLinks).sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  },
+
+  async getUserShortLinks(userId?: string): Promise<any[]> {
+    if (!userId) {
+      return this.getAllShortLinks();
+    }
     const p = await getOraclePool();
     if (p) {
       try {
@@ -888,8 +958,7 @@ export const oracleDb = {
         console.warn('[Oracle] getAllBanners remote note:', err?.message || err);
       }
     }
-    const localList = Object.values(oracleLocalStore.banners);
-    return localList.length > 0 ? localList : DEFAULT_BANNERS;
+    return Object.values(oracleLocalStore.banners);
   },
 
   async saveBanner(banner: any): Promise<void> {

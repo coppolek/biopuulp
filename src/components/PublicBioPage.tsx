@@ -467,9 +467,40 @@ const DEFAULT_SPONSOR_BANNERS: AppBanner[] = [
   }
 ];
 
+const THEME_PRESETS_MAP: Record<string, any> = {
+  light: { backgroundColor: '#ffffff', textColor: '#000000', buttonColor: '#f3f4f6', buttonTextColor: '#000000', fontFamily: 'sans-serif', backgroundStyle: 'solid', buttonRadius: 'lg' },
+  dark: { backgroundColor: '#000000', textColor: '#ffffff', buttonColor: '#1f2937', buttonTextColor: '#ffffff', fontFamily: 'sans-serif', backgroundStyle: 'solid', buttonRadius: 'lg' },
+  minimal: { backgroundColor: '#f9fafb', textColor: '#111827', buttonColor: '#000000', buttonTextColor: '#ffffff', fontFamily: 'monospace', backgroundStyle: 'dots', buttonRadius: 'none' },
+  sunset: { backgroundColor: '#ffecd2', textColor: '#4a2f1d', buttonColor: '#fcb69f', buttonTextColor: '#4a2f1d', fontFamily: 'serif', backgroundStyle: 'gradient-animated', buttonRadius: 'full' },
+  ocean: { backgroundColor: '#0f2027', textColor: '#ffffff', buttonColor: '#203a43', buttonTextColor: '#ffffff', fontFamily: 'sans-serif', backgroundStyle: 'gradient-animated', buttonRadius: 'md' },
+  neon: { backgroundColor: '#000000', textColor: '#00ff00', buttonColor: '#111111', buttonTextColor: '#00ff00', fontFamily: 'monospace', backgroundStyle: 'grid', buttonRadius: 'none' },
+  mono: { backgroundColor: '#111111', textColor: '#eeeeee', buttonColor: '#333333', buttonTextColor: '#ffffff', fontFamily: 'sans-serif', backgroundStyle: 'minimal-lines', buttonRadius: 'none' }
+};
+
 export default function PublicBioPage({ page, isPreview = false }: { page: BioPage, isPreview?: boolean }) {
-  const { profile, theme, links, socials, modules } = page;
-  const lang = page.language || 'it';
+  const profile = {
+    name: page?.profile?.name || (page?.profile as any)?.displayName || `@${page?.slug || 'creator'}`,
+    bio: page?.profile?.bio || '',
+    avatarUrl: page?.profile?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'
+  };
+
+  const theme = typeof page?.theme === 'string'
+    ? (THEME_PRESETS_MAP[page.theme] || THEME_PRESETS_MAP.minimal)
+    : {
+        backgroundColor: '#ffffff',
+        textColor: '#1A1A1A',
+        buttonColor: '#000000',
+        buttonTextColor: '#ffffff',
+        buttonRadius: 'lg',
+        fontFamily: 'sans-serif',
+        buttonStyle: 'solid',
+        ...(page?.theme || {})
+      };
+
+  const links = Array.isArray(page?.links) ? page.links : [];
+  const socials = Array.isArray(page?.socials) ? page.socials : [];
+  const modules = Array.isArray(page?.modules) ? page.modules : [];
+  const lang = page?.language || 'it';
   const [searchQuery, setSearchQuery] = useState('');
   const [banners, setBanners] = useState<AppBanner[]>(DEFAULT_SPONSOR_BANNERS);
   const [confirmLink, setConfirmLink] = useState<(Partial<BioLink> & { url: string; isMonetized?: boolean }) | null>(null);

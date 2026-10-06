@@ -712,11 +712,20 @@ async function startServer() {
     }
   });
 
-  // --- MySQL Short Links ---
+  // --- Oracle Short Links ---
   app.get("/api/short-links", async (req, res) => {
     try {
       const userId = req.query.userId as string;
-      const links = await mysqlDb.getUserShortLinks(userId);
+      const links = userId ? await mysqlDb.getUserShortLinks(userId) : await mysqlDb.getAllShortLinks();
+      res.json(links);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
+  app.get("/api/short-links/all", async (req, res) => {
+    try {
+      const links = await mysqlDb.getAllShortLinks();
       res.json(links);
     } catch (e: any) {
       res.status(500).json({ error: e?.message });
@@ -764,6 +773,10 @@ async function startServer() {
 
   app.get("/api/short-links/:code", async (req, res) => {
     try {
+      if (req.params.code === 'all') {
+        const links = await mysqlDb.getAllShortLinks();
+        return res.json(links);
+      }
       const link = await mysqlDb.getShortLinkByCode(req.params.code);
       if (!link) return res.status(404).json({ error: "Link non trovato" });
       res.json(link);
@@ -1189,6 +1202,18 @@ async function startServer() {
       const link = await getShortLinkData(shortCode);
       if (!link) {
         return next();
+      }
+
+      const userAgent = (req.headers["user-agent"] || "").toLowerCase();
+      const isCrawler = /bot|crawl|slurp|spider|mediapartners|whatsapp|facebookexternalhit|twitterbot|slackbot|discordbot|telegrambot|linkedinbot|pinterest/i.test(userAgent);
+
+      const target = (link.targetUrl || (link as any).originalUrl || '').trim();
+      const finalUrl = target.startsWith('http://') || target.startsWith('https://') ? target : `https://${target}`;
+
+      // Fast direct 302 redirect for non-crawler human visitors if not monetized
+      if (!isCrawler && !link.monetized && target) {
+        mysqlDb.incrementShortLinkClick(link.id).catch(() => {});
+        return res.redirect(302, finalUrl);
       }
 
       const origin = getOrigin(req);

@@ -26,8 +26,22 @@ export default function ShortLinkRedirect() {
       setLinkData(data);
       incrementShortLinkClick(data.id);
 
+      const target = (data.targetUrl || data.originalUrl || '').trim();
+      const finalUrl = target.startsWith('http://') || target.startsWith('https://') ? target : `https://${target}`;
+      setLinkData({ ...data, targetUrl: finalUrl });
+
       if (!data.monetized) {
-        window.location.href = data.targetUrl;
+        // Immediate redirect attempt
+        try {
+          if (window.top && window.top !== window) {
+            window.top.location.href = finalUrl;
+          } else {
+            window.location.href = finalUrl;
+          }
+        } catch (_) {
+          window.location.href = finalUrl;
+        }
+        setLoading(false);
       } else {
         try {
           const banners = await getAllBanners();
@@ -51,9 +65,17 @@ export default function ShortLinkRedirect() {
     if (linkData?.monetized && !loading && countdown > 0) {
       const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
       return () => clearTimeout(timer);
-    } else if (linkData?.monetized && countdown === 0) {
+    } else if (linkData?.monetized && countdown === 0 && linkData?.targetUrl) {
       // Redirect after countdown
-      window.location.href = linkData.targetUrl;
+      try {
+        if (window.top && window.top !== window) {
+          window.top.location.href = linkData.targetUrl;
+        } else {
+          window.location.href = linkData.targetUrl;
+        }
+      } catch (_) {
+        window.location.href = linkData.targetUrl;
+      }
     }
   }, [countdown, loading, linkData]);
 
@@ -62,7 +84,13 @@ export default function ShortLinkRedirect() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center border-2 border-black">
           <h1 className="text-2xl font-black uppercase tracking-tighter mb-2">Link non trovato</h1>
-          <p className="text-gray-500 text-sm">Lo short link richiesto non esiste o è stato rimosso.</p>
+          <p className="text-gray-500 text-sm mb-6">Lo short link richiesto non esiste o è stato rimosso.</p>
+          <a
+            href="/"
+            className="inline-block bg-black text-white text-xs font-bold uppercase tracking-widest px-6 py-2.5 rounded-full hover:bg-gray-800 transition-colors"
+          >
+            Torna alla Home
+          </a>
         </div>
       </div>
     );
@@ -70,8 +98,36 @@ export default function ShortLinkRedirect() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-black border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
+        <div className="w-10 h-10 border-4 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Caricamento link in corso...</p>
+      </div>
+    );
+  }
+
+  // Non-monetized immediate landing if navigation didn't leave immediately
+  if (linkData && !linkData.monetized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center border-2 border-black">
+          <div className="w-12 h-12 bg-black text-white rounded-2xl flex items-center justify-center font-bold text-lg mx-auto mb-4">
+            B•
+          </div>
+          <h1 className="text-xl font-black uppercase tracking-tight mb-2">Reindirizzamento in corso</h1>
+          <p className="text-gray-500 text-xs mb-6 break-all">
+            Stai per essere reindirizzato a: <br />
+            <strong className="text-black font-semibold">{linkData.targetUrl}</strong>
+          </p>
+          <a
+            href={linkData.targetUrl}
+            target="_top"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 w-full bg-black text-white px-6 py-3.5 rounded-full text-xs font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-md"
+          >
+            <span>Apri Destinazione Ora</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+          </a>
+        </div>
       </div>
     );
   }

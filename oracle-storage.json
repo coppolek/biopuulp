@@ -9,6 +9,16 @@
         "bio": "Creator & Developer",
         "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200"
       },
+      "theme": {
+        "backgroundColor": "#f9fafb",
+        "textColor": "#111827",
+        "buttonColor": "#000000",
+        "buttonTextColor": "#ffffff",
+        "buttonRadius": "none",
+        "fontFamily": "monospace",
+        "buttonStyle": "solid",
+        "backgroundStyle": "dots"
+      },
       "links": [
         {
           "id": "1",
@@ -23,8 +33,15 @@
           "active": true
         }
       ],
-      "theme": "minimal",
-      "views": 0
+      "socials": [
+        {
+          "platform": "youtube",
+          "url": "https://youtube.com"
+        }
+      ],
+      "modules": [],
+      "views": 0,
+      "language": "it"
     }
   },
   "shortLinks": {
@@ -35,8 +52,16 @@
       "originalUrl": "https://youtube.com",
       "targetUrl": "https://youtube.com",
       "title": "Canale YouTube Ufficiale",
-      "clicks": 0,
+      "clicks": 2,
       "createdAt": "2026-10-06T09:27:40.691Z"
+    },
+    "link_1791302362943": {
+      "id": "link_1791302362943",
+      "targetUrl": "https://google.com",
+      "shortCode": "goog123",
+      "title": "Google Link",
+      "clicks": 0,
+      "createdAt": "2026-10-06T15:59:22.944Z"
     }
   },
   "subscribers": [],
@@ -77,7 +102,7 @@
     "user_admin_coppolek": {
       "id": "user_admin_coppolek",
       "email": "coppolek@gmail.com",
-      "password_hash": "cc64d6b0de2c2b19efd9e27ff5e05cba:3a5869175f9471a55c646a102ff91df5490762ee03a6f29cf716e7d61347f2492b7a990a6f3be61aaa4b90fc9ebfa48dc26d956f5d5fa83156389d39136c9893"
+      "password_hash": "bd2be944e31893d4631f97bc4b1a6a1d:5944eef54b192c59ff5772a5f3053e24d0f3d0daf8e78227a818473c4811791ccb6a699c28b0d9c006bdd0e9b3780aa5b3630655d280de60072ce9433cf4d05d"
     },
     "user_1791271939005_z5kr7": {
       "id": "user_1791271939005_z5kr7",

@@ -10,7 +10,7 @@ import AnalyticsDashboard from './components/AnalyticsDashboard';
 import Auth from './components/Auth';
 import PublicView from './components/PublicView';
 import { auth, onAuthStateChanged, signOut, User } from './lib/auth';
-import { getUserPages, createNewPage, savePage, getAllPages, deletePage, getAllBanners, saveBanner, deleteBanner, getUserShortLinks, createShortLink, deleteShortLink, updateShortLink } from './lib/db';
+import { getUserPages, createNewPage, savePage, getAllPages, deletePage, getAllBanners, saveBanner, deleteBanner, getUserShortLinks, getAllShortLinks, createShortLink, deleteShortLink, updateShortLink } from './lib/db';
 import { BioPage, AppBanner } from './types';
 
 
@@ -868,8 +868,10 @@ function DashboardView({ pages, shortLinks = [], onEdit, onViewAnalytics, onCrea
 function AdminView({ onBack }: { onBack: () => void }) {
   const [allPages, setAllPages] = useState<BioPage[]>([]);
   const [allBanners, setAllBanners] = useState<AppBanner[]>([]);
+  const [allShortLinks, setAllShortLinks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'pages'|'banners'>('pages');
+  const [activeTab, setActiveTab] = useState<'pages' | 'short_links' | 'banners'>('banners');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Form states for new banner
   const [isBannerModalOpen, setIsBannerModalOpen] = useState(false);
@@ -883,28 +885,70 @@ function AdminView({ onBack }: { onBack: () => void }) {
   const [newBannerLinkUrl, setNewBannerLinkUrl] = useState('');
   const [newBannerPosition, setNewBannerPosition] = useState<'top' | 'bottom' | 'short_url'>('top');
 
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [pages, banners, links] = await Promise.all([
+        getAllPages(),
+        getAllBanners(),
+        getAllShortLinks()
+      ]);
+      setAllPages(pages || []);
+      setAllBanners(banners || []);
+      setAllShortLinks(links || []);
+    } catch (err) {
+      console.error("Failed to load admin data", err);
+      toast.error("Errore caricamento dati amministratore");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [pages, banners] = await Promise.all([
-          getAllPages(),
-          getAllBanners()
-        ]);
-        setAllPages(pages);
-        setAllBanners(banners);
-      } catch (err) {
-        console.error("Failed to load admin data", err);
-      } finally {
-        setLoading(false);
-      }
-    };
     loadData();
   }, []);
 
-  const handleDelete = async (pageId: string) => {
-    if (confirm("Sei sicuro di voler eliminare questa pagina? Questa azione è irreversibile.")) {
+  const handleDeletePage = async (pageId: string) => {
+    try {
       await deletePage(pageId);
-      setAllPages(allPages.filter(p => p.id !== pageId));
+      setAllPages(prev => prev.filter(p => p.id !== pageId));
+      setDeletingId(null);
+      toast.success("Pagina eliminata con successo!");
+    } catch (err: any) {
+      toast.error("Errore eliminazione pagina: " + (err?.message || "Riprova"));
+    }
+  };
+
+  const handleDeleteBanner = async (bannerId: string) => {
+    try {
+      await deleteBanner(bannerId);
+      setAllBanners(prev => prev.filter(b => b.id !== bannerId));
+      setDeletingId(null);
+      toast.success("Banner eliminato con successo!");
+    } catch (err: any) {
+      toast.error("Errore eliminazione banner: " + (err?.message || "Riprova"));
+    }
+  };
+
+  const handleDeleteShortLink = async (linkId: string) => {
+    try {
+      await deleteShortLink(linkId);
+      setAllShortLinks(prev => prev.filter(l => l.id !== linkId));
+      setDeletingId(null);
+      toast.success("Short link eliminato con successo!");
+    } catch (err: any) {
+      toast.error("Errore eliminazione short link: " + (err?.message || "Riprova"));
+    }
+  };
+
+  const handleToggleBanner = async (banner: AppBanner) => {
+    try {
+      const updated = { ...banner, active: !banner.active };
+      await saveBanner(updated);
+      setAllBanners(prev => prev.map(b => b.id === banner.id ? updated : b));
+      toast.success(updated.active ? 'Banner attivato!' : 'Banner disattivato!');
+    } catch (err: any) {
+      toast.error("Errore aggiornamento banner");
     }
   };
 
@@ -912,50 +956,51 @@ function AdminView({ onBack }: { onBack: () => void }) {
     e.preventDefault();
     if (!newBannerName.trim()) return;
 
-    const banner: AppBanner = {
-      id: `banner_${Date.now()}`,
-      name: newBannerName,
-      type: newBannerType,
-      position: newBannerPosition,
-      active: true,
-    };
+    try {
+      const banner: AppBanner = {
+        id: `banner_${Date.now()}`,
+        name: newBannerName.trim(),
+        type: newBannerType,
+        position: newBannerPosition,
+        active: true,
+      };
 
-    if (newBannerType === 'image') {
-      banner.imageUrl = newBannerImageUrl;
-      banner.linkUrl = newBannerLinkUrl;
-    } else if (newBannerType === 'text') {
-      banner.text = newBannerText;
-      banner.textColor = newBannerTextColor;
-      banner.backgroundColor = newBannerBgColor;
-      banner.linkUrl = newBannerLinkUrl;
-    } else {
-      banner.code = newBannerCode;
+      if (newBannerType === 'image') {
+        banner.imageUrl = newBannerImageUrl.trim();
+        banner.linkUrl = newBannerLinkUrl.trim();
+      } else if (newBannerType === 'text') {
+        banner.text = newBannerText;
+        banner.textColor = newBannerTextColor;
+        banner.backgroundColor = newBannerBgColor;
+        banner.linkUrl = newBannerLinkUrl.trim();
+      } else {
+        banner.code = newBannerCode;
+      }
+
+      await saveBanner(banner);
+      setAllBanners(prev => [...prev, banner]);
+      setIsBannerModalOpen(false);
+      toast.success('Nuovo banner creato con successo!');
+      
+      // Reset form
+      setNewBannerName('');
+      setNewBannerCode('');
+      setNewBannerImageUrl('');
+      setNewBannerLinkUrl('');
+      setNewBannerText('');
+      setNewBannerTextColor('#000000');
+      setNewBannerBgColor('#ffffff');
+    } catch (err: any) {
+      toast.error("Errore durante il salvataggio del banner");
     }
-
-    await saveBanner(banner);
-    setAllBanners([...allBanners, banner]);
-    setIsBannerModalOpen(false);
-    
-    // Reset form
-    setNewBannerName('');
-    setNewBannerCode('');
-    setNewBannerImageUrl('');
-    setNewBannerLinkUrl('');
-    setNewBannerText('');
-    setNewBannerTextColor('#000000');
-    setNewBannerBgColor('#ffffff');
   };
 
-  const handleToggleBanner = async (banner: AppBanner) => {
-    const updated = { ...banner, active: !banner.active };
-    await saveBanner(updated);
-    setAllBanners(allBanners.map(b => b.id === banner.id ? updated : b));
-  };
-
-  const handleDeleteBanner = async (bannerId: string) => {
-    if (confirm("Sei sicuro di voler eliminare questo banner?")) {
-      await deleteBanner(bannerId);
-      setAllBanners(allBanners.filter(b => b.id !== bannerId));
+  const copyToClipboard = (text: string, label: string = 'Link') => {
+    try {
+      navigator.clipboard.writeText(text);
+      toast.success(`${label} copiato negli appunti!`);
+    } catch (e) {
+      toast.success(`${label}: ${text}`);
     }
   };
 
@@ -972,7 +1017,8 @@ function AdminView({ onBack }: { onBack: () => void }) {
                   type="text" 
                   value={newBannerName}
                   onChange={e => setNewBannerName(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black"
+                  className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black text-sm"
+                  placeholder="Es. Sponsor Primavera"
                   required
                 />
               </div>
@@ -981,11 +1027,11 @@ function AdminView({ onBack }: { onBack: () => void }) {
                 <select 
                   value={newBannerPosition}
                   onChange={e => setNewBannerPosition(e.target.value as any)}
-                  className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black"
+                  className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black text-sm"
                 >
-                  <option value="top">In alto</option>
-                  <option value="bottom">In basso</option>
-                  <option value="short_url">Short URL (Ad)</option>
+                  <option value="top">In alto (Bio Page)</option>
+                  <option value="bottom">In basso (Bio Page)</option>
+                  <option value="short_url">Short URL (Ad Interstiziale)</option>
                 </select>
               </div>
               <div>
@@ -993,14 +1039,13 @@ function AdminView({ onBack }: { onBack: () => void }) {
                 <select 
                   value={newBannerType}
                   onChange={e => setNewBannerType(e.target.value as any)}
-                  className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black"
+                  className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black text-sm"
                 >
                   <option value="image">Immagine + Link</option>
                   <option value="code">Codice personalizzato / AdSense</option>
                   <option value="text">Testo</option>
                 </select>
               </div>
-              
               
               {newBannerType === 'image' ? (
                 <>
@@ -1010,7 +1055,7 @@ function AdminView({ onBack }: { onBack: () => void }) {
                       type="url" 
                       value={newBannerImageUrl}
                       onChange={e => setNewBannerImageUrl(e.target.value)}
-                      className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black"
+                      className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black text-sm"
                       placeholder="https://..."
                       required
                     />
@@ -1021,7 +1066,7 @@ function AdminView({ onBack }: { onBack: () => void }) {
                       type="url" 
                       value={newBannerLinkUrl}
                       onChange={e => setNewBannerLinkUrl(e.target.value)}
-                      className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black"
+                      className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black text-sm"
                       placeholder="https://..."
                       required
                     />
@@ -1035,8 +1080,8 @@ function AdminView({ onBack }: { onBack: () => void }) {
                       type="text" 
                       value={newBannerText}
                       onChange={e => setNewBannerText(e.target.value)}
-                      className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black"
-                      placeholder="Scopri la nostra nuova offerta..."
+                      className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black text-sm"
+                      placeholder="Scopri la nostra offerta esclusiva..."
                       required
                     />
                   </div>
@@ -1066,7 +1111,7 @@ function AdminView({ onBack }: { onBack: () => void }) {
                       type="url" 
                       value={newBannerLinkUrl}
                       onChange={e => setNewBannerLinkUrl(e.target.value)}
-                      className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black"
+                      className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-black text-sm"
                       placeholder="https://..."
                       required
                     />
@@ -1090,15 +1135,15 @@ function AdminView({ onBack }: { onBack: () => void }) {
                 <button 
                   type="button" 
                   onClick={() => setIsBannerModalOpen(false)}
-                  className="px-4 py-2 text-sm font-bold text-gray-500 hover:text-black"
+                  className="px-4 py-2 text-sm font-bold text-gray-500 hover:text-black cursor-pointer"
                 >
                   Annulla
                 </button>
                 <button 
                   type="submit" 
-                  className="px-4 py-2 bg-black text-white rounded-lg text-sm font-bold uppercase tracking-widest hover:opacity-90"
+                  className="px-4 py-2 bg-black text-white rounded-lg text-sm font-bold uppercase tracking-widest hover:opacity-90 cursor-pointer"
                 >
-                  Salva
+                  Salva Banner
                 </button>
               </div>
             </form>
@@ -1108,7 +1153,7 @@ function AdminView({ onBack }: { onBack: () => void }) {
 
       <header className="flex justify-between items-center mb-12">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50">
+          <button onClick={onBack} className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 cursor-pointer">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
           <div className="w-8 h-8 bg-red-600 text-white rounded-lg flex items-center justify-center font-bold">A•</div>
@@ -1120,7 +1165,7 @@ function AdminView({ onBack }: { onBack: () => void }) {
         <div className="flex justify-between items-end mb-8">
           <div>
             <h1 className="text-3xl font-black italic uppercase tracking-tighter text-red-600">Pannello Amministratore</h1>
-            <p className="text-gray-500 mt-2 font-medium">Gestisci le pagine e la monetizzazione globale (Banner).</p>
+            <p className="text-gray-500 mt-2 font-medium">Gestisci le pagine, gli short link e la monetizzazione globale (Banner).</p>
           </div>
           <div className="flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full text-emerald-800 text-xs font-bold shadow-xs">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -1130,14 +1175,20 @@ function AdminView({ onBack }: { onBack: () => void }) {
         
         <div className="flex gap-4 mb-6 border-b border-gray-200">
           <button 
-            className={`px-4 py-2 font-bold uppercase tracking-widest text-sm border-b-2 ${activeTab === 'pages' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-400 hover:text-gray-900'}`}
-            onClick={() => setActiveTab('pages')}
+            className={`px-4 py-2 font-bold uppercase tracking-widest text-sm border-b-2 cursor-pointer transition-colors ${activeTab === 'pages' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-400 hover:text-gray-900'}`}
+            onClick={() => { setActiveTab('pages'); setDeletingId(null); }}
           >
             Pagine ({allPages.length})
           </button>
           <button 
-            className={`px-4 py-2 font-bold uppercase tracking-widest text-sm border-b-2 ${activeTab === 'banners' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-400 hover:text-gray-900'}`}
-            onClick={() => setActiveTab('banners')}
+            className={`px-4 py-2 font-bold uppercase tracking-widest text-sm border-b-2 cursor-pointer transition-colors ${activeTab === 'short_links' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-400 hover:text-gray-900'}`}
+            onClick={() => { setActiveTab('short_links'); setDeletingId(null); }}
+          >
+            Short Links ({allShortLinks.length})
+          </button>
+          <button 
+            className={`px-4 py-2 font-bold uppercase tracking-widest text-sm border-b-2 cursor-pointer transition-colors ${activeTab === 'banners' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-400 hover:text-gray-900'}`}
+            onClick={() => { setActiveTab('banners'); setDeletingId(null); }}
           >
             Banners ({allBanners.length})
           </button>
@@ -1163,28 +1214,58 @@ function AdminView({ onBack }: { onBack: () => void }) {
                   <tr key={page.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full border border-gray-200 overflow-hidden">
-                          <img src={page.profile.avatarUrl} alt="" className="w-full h-full object-cover" />
+                        <div className="w-8 h-8 rounded-full border border-gray-200 overflow-hidden bg-gray-100 flex items-center justify-center">
+                          {page.profile?.avatarUrl ? (
+                            <img src={page.profile.avatarUrl} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="font-bold text-xs uppercase">{page.slug?.substring(0, 2)}</span>
+                          )}
                         </div>
                         <div>
-                          <div className="font-bold">{page.profile.name}</div>
+                          <div className="font-bold">{page.profile?.name || page.slug}</div>
                           <div className="text-[10px] text-gray-400">{page.id}</div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <a href={`/${page.slug}`} target="_blank" className="text-blue-600 hover:underline">/{page.slug}</a>
+                      <a href={`/${page.slug}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">/{page.slug}</a>
                     </td>
                     <td className="px-6 py-4 font-mono">
                       {page.views?.toLocaleString() || 0}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button 
-                        onClick={() => handleDelete(page.id)}
-                        className="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
-                      >
-                        Elimina
-                      </button>
+                      {deletingId === page.id ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span className="text-[10px] text-red-600 font-bold">Sicuro?</span>
+                          <button 
+                            onClick={() => handleDeletePage(page.id)}
+                            className="text-white bg-red-600 hover:bg-red-700 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer shadow-xs"
+                          >
+                            Sì, elimina
+                          </button>
+                          <button 
+                            onClick={() => setDeletingId(null)}
+                            className="text-gray-600 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md text-[10px] font-bold uppercase transition-colors cursor-pointer"
+                          >
+                            Annulla
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end gap-2">
+                          <button 
+                            onClick={() => copyToClipboard(`${window.location.origin}/${page.slug}`, 'URL')}
+                            className="text-gray-600 hover:text-black bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                          >
+                            Copia
+                          </button>
+                          <button 
+                            onClick={() => setDeletingId(page.id)}
+                            className="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                          >
+                            Elimina
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1192,7 +1273,83 @@ function AdminView({ onBack }: { onBack: () => void }) {
             </table>
             {allPages.length === 0 && (
               <div className="text-center py-12 text-gray-500 font-medium">
-                Nessuna pagina registrata
+                Nessuna pagina registrata nel database
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'short_links' ? (
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+            <table className="w-full text-left">
+              <thead className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase font-black tracking-widest text-gray-500">
+                <tr>
+                  <th className="px-6 py-4">Titolo / Codice</th>
+                  <th className="px-6 py-4">URL Destinazione</th>
+                  <th className="px-6 py-4">Click</th>
+                  <th className="px-6 py-4">Monetizzato</th>
+                  <th className="px-6 py-4 text-right">Azioni</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-sm font-medium">
+                {allShortLinks.map(link => (
+                  <tr key={link.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="font-bold">{link.title || link.shortCode}</div>
+                      <a href={`/s/${link.shortCode}`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">/s/{link.shortCode}</a>
+                    </td>
+                    <td className="px-6 py-4 max-w-xs truncate text-xs text-gray-500">
+                      <a href={link.targetUrl || link.originalUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                        {link.targetUrl || link.originalUrl}
+                      </a>
+                    </td>
+                    <td className="px-6 py-4 font-mono">
+                      {link.clicks || 0}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${link.monetized ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'}`}>
+                        {link.monetized ? 'Sì (Ad)' : 'No'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      {deletingId === link.id ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span className="text-[10px] text-red-600 font-bold">Sicuro?</span>
+                          <button 
+                            onClick={() => handleDeleteShortLink(link.id)}
+                            className="text-white bg-red-600 hover:bg-red-700 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer shadow-xs"
+                          >
+                            Sì, elimina
+                          </button>
+                          <button 
+                            onClick={() => setDeletingId(null)}
+                            className="text-gray-600 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md text-[10px] font-bold uppercase transition-colors cursor-pointer"
+                          >
+                            Annulla
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end gap-2">
+                          <button 
+                            onClick={() => copyToClipboard(`${window.location.origin}/s/${link.shortCode}`, 'Short Link')}
+                            className="text-gray-600 hover:text-black bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                          >
+                            Copia
+                          </button>
+                          <button 
+                            onClick={() => setDeletingId(link.id)}
+                            className="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                          >
+                            Elimina
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {allShortLinks.length === 0 && (
+              <div className="text-center py-12 text-gray-500 font-medium">
+                Nessuno short link registrato nel database
               </div>
             )}
           </div>
@@ -1201,7 +1358,7 @@ function AdminView({ onBack }: { onBack: () => void }) {
             <div className="flex justify-end mb-4">
               <button 
                 onClick={() => setIsBannerModalOpen(true)}
-                className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest hover:opacity-90"
+                className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest hover:opacity-90 cursor-pointer"
               >
                 + Nuovo Banner
               </button>
@@ -1222,23 +1379,41 @@ function AdminView({ onBack }: { onBack: () => void }) {
                   {allBanners.map(banner => (
                     <tr key={banner.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 font-bold">{banner.name}</td>
-                      <td className="px-6 py-4 uppercase text-[10px] tracking-widest">{banner.type}</td>
-                      <td className="px-6 py-4 uppercase text-[10px] tracking-widest">{banner.position}</td>
+                      <td className="px-6 py-4 uppercase text-[10px] tracking-widest text-gray-500">{banner.type}</td>
+                      <td className="px-6 py-4 uppercase text-[10px] tracking-widest text-gray-500">{banner.position}</td>
                       <td className="px-6 py-4">
                         <button 
                           onClick={() => handleToggleBanner(banner)}
-                          className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${banner.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}
+                          className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest cursor-pointer transition-all ${banner.active ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                         >
                           {banner.active ? 'Attivo' : 'Inattivo'}
                         </button>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button 
-                          onClick={() => handleDeleteBanner(banner.id)}
-                          className="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
-                        >
-                          Elimina
-                        </button>
+                        {deletingId === banner.id ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span className="text-[10px] text-red-600 font-bold">Sicuro?</span>
+                            <button 
+                              onClick={() => handleDeleteBanner(banner.id)}
+                              className="text-white bg-red-600 hover:bg-red-700 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer shadow-xs"
+                            >
+                              Sì, elimina
+                            </button>
+                            <button 
+                              onClick={() => setDeletingId(null)}
+                              className="text-gray-600 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md text-[10px] font-bold uppercase transition-colors cursor-pointer"
+                            >
+                              Annulla
+                            </button>
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={() => setDeletingId(banner.id)}
+                            className="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                          >
+                            Elimina
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

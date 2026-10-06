@@ -295,6 +295,18 @@ export const deleteShortLink = async (id: string) => {
   }
 };
 
+export const getAllShortLinks = async (): Promise<any[]> => {
+  try {
+    const res = await fetch('/api/short-links/all');
+    if (res.ok) return await res.json();
+    const fallbackRes = await fetch('/api/short-links');
+    if (fallbackRes.ok) return await fallbackRes.json();
+  } catch (error) {
+    console.warn('Could not get all short links:', error);
+  }
+  return [];
+};
+
 export const getShortLinkByCode = async (shortCode: string) => {
   try {
     const res = await fetch(`/api/short-links/by-code/${encodeURIComponent(shortCode)}`);
