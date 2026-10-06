@@ -12,6 +12,7 @@ try {
 } catch (e) {}
 
 const WALLET_DIR = path.resolve(process.cwd(), 'oracle-wallet');
+const ORACLE_SETTINGS_PATH = path.resolve(process.cwd(), 'oracle-settings.json');
 
 export interface OracleConfig {
   user: string;
@@ -38,6 +39,78 @@ let activeConfig: OracleConfig = {
   walletPassword: process.env.ORACLE_WALLET_PASSWORD || '',
   useWallet: false
 };
+
+// Auto-load persisted Oracle settings
+try {
+  if (fs.existsSync(ORACLE_SETTINGS_PATH)) {
+    const saved = JSON.parse(fs.readFileSync(ORACLE_SETTINGS_PATH, 'utf8'));
+    activeConfig = {
+      ...activeConfig,
+      ...saved,
+      walletLocation: fs.existsSync(WALLET_DIR) ? WALLET_DIR : (saved.walletLocation || '')
+    };
+  }
+} catch (e) {
+  console.warn('[Oracle] Could not read oracle-settings.json:', e);
+}
+
+function persistOracleConfig() {
+  try {
+    fs.writeFileSync(ORACLE_SETTINGS_PATH, JSON.stringify({
+      user: activeConfig.user,
+      password: activeConfig.password,
+      host: activeConfig.host,
+      port: activeConfig.port,
+      serviceName: activeConfig.serviceName,
+      connectString: activeConfig.connectString,
+      walletPassword: activeConfig.walletPassword,
+      useWallet: activeConfig.useWallet
+    }, null, 2));
+  } catch (e) {
+    console.warn('[Oracle] Could not write oracle-settings.json:', e);
+  }
+}
+
+// Perennial Local Sync Store for Oracle
+const ORACLE_STORAGE_PATH = path.resolve(process.cwd(), 'oracle-storage.json');
+const SHARED_STORAGE_PATH = path.resolve(process.cwd(), 'data-storage.json');
+
+interface OracleLocalStore {
+  pages: Record<string, any>;
+  shortLinks: Record<string, any>;
+  subscribers: any[];
+  banners: Record<string, any>;
+  analytics: Record<string, any>;
+  users: Record<string, any>;
+}
+
+let oracleLocalStore: OracleLocalStore = {
+  pages: {},
+  shortLinks: {},
+  subscribers: [],
+  banners: {},
+  analytics: {},
+  users: {}
+};
+
+try {
+  if (fs.existsSync(ORACLE_STORAGE_PATH)) {
+    oracleLocalStore = JSON.parse(fs.readFileSync(ORACLE_STORAGE_PATH, 'utf8'));
+  } else if (fs.existsSync(SHARED_STORAGE_PATH)) {
+    oracleLocalStore = JSON.parse(fs.readFileSync(SHARED_STORAGE_PATH, 'utf8'));
+    fs.writeFileSync(ORACLE_STORAGE_PATH, JSON.stringify(oracleLocalStore, null, 2));
+  }
+} catch (e) {
+  console.warn('[Oracle] Local store load note:', e);
+}
+
+function persistOracleLocalStore() {
+  try {
+    fs.writeFileSync(ORACLE_STORAGE_PATH, JSON.stringify(oracleLocalStore, null, 2));
+    // Also keep data-storage.json in sync
+    fs.writeFileSync(SHARED_STORAGE_PATH, JSON.stringify(oracleLocalStore, null, 2));
+  } catch (e) {}
+}
 
 let pool: oracledb.Pool | null = null;
 let isConnected = false;
@@ -148,7 +221,13 @@ function buildConnectString(cfg: OracleConfig, isTest = false): string {
 
   const host = cfg.host || 'adb.eu-turin-1.oraclecloud.com';
   const port = cfg.port || 1522;
-  const service = cfg.serviceName || 'gshvtnzld55j0j8l_tp.adb.oraclecloud.com';
+  let service = cfg.serviceName || 'g4baf80d64d08cb_gshvtnzld55j0j8l_tp.adb.oraclecloud.com';
+  
+  // Ensure the tenant prefix is always present for Autonomous Database in eu-turin-1
+  if (service.includes('gshvtnzld55j0j8l') && !service.startsWith('g4baf80d64d08cb_')) {
+    service = `g4baf80d64d08cb_${service}`;
+  }
+
   const retries = isTest ? 1 : 2;
 
   // Easy Connect Plus with TCPS
@@ -156,11 +235,11 @@ function buildConnectString(cfg: OracleConfig, isTest = false): string {
 }
 
 export async function getOraclePool(): Promise<oracledb.Pool | null> {
-  if (!pool) {
-    if (!activeConfig.password && !activeConfig.user) {
-      return null;
-    }
+  if (!activeConfig.password || !activeConfig.password.trim() || !activeConfig.user) {
+    return null;
+  }
 
+  if (!pool) {
     try {
       const connStr = buildConnectString(activeConfig);
       const poolAttrs: oracledb.PoolAttributes = {
@@ -391,6 +470,8 @@ export async function updateOracleConfig(newConfig: OracleConfig) {
     useWallet: newConfig.useWallet !== undefined ? newConfig.useWallet : activeConfig.useWallet
   };
 
+  persistOracleConfig();
+
   // Close old pool
   if (pool) {
     try {
@@ -433,7 +514,37 @@ export async function extractWalletZip(zipBuffer: Buffer, walletPassword?: strin
   }
 }
 
-// Data Access Layer for Oracle
+const DEFAULT_BANNERS = [
+  {
+    id: 'banner_sponsor_cloud',
+    name: 'Oracle Cloud Free Tier',
+    type: 'image',
+    position: 'short_url',
+    active: true,
+    imageUrl: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80',
+    linkUrl: 'https://cloud.oracle.com',
+    text: 'Sponsor Ufficiale: Fino a 300$ di crediti e Database Always Free su Oracle Cloud'
+  },
+  {
+    id: 'banner_sponsor_tech',
+    name: 'Tech & Lifestyle Gear',
+    type: 'image',
+    position: 'short_url',
+    active: true,
+    imageUrl: 'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?auto=format&fit=crop&w=1200&q=80',
+    linkUrl: 'https://amazon.it',
+    text: 'Scopri le migliori offerte tecnologiche e accessori per creator'
+  }
+];
+
+if (Object.keys(oracleLocalStore.banners).length === 0) {
+  for (const b of DEFAULT_BANNERS) {
+    oracleLocalStore.banners[b.id] = b;
+  }
+  persistOracleLocalStore();
+}
+
+// Data Access Layer for Oracle Database
 export const oracleDb = {
   async isAvailable() {
     return isConnected;
@@ -442,338 +553,652 @@ export const oracleDb = {
   // Pages
   async getAllPages(): Promise<any[]> {
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const res: any = await conn.execute(`SELECT data FROM pages ORDER BY updated_at DESC`);
-      return (res.rows || []).map((row: any) => JSON.parse(row.DATA || row.data));
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const res: any = await conn.execute(`SELECT data FROM pages ORDER BY updated_at DESC`);
+          const pages = (res.rows || []).map((row: any) => JSON.parse(row.DATA || row.data));
+          pages.forEach((pg: any) => { oracleLocalStore.pages[pg.id] = pg; });
+          persistOracleLocalStore();
+          return pages;
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] getAllPages remote note:', err?.message || err);
+      }
     }
+    return Object.values(oracleLocalStore.pages).sort((a: any, b: any) => (b.updatedAt || 0) - (a.updatedAt || 0));
   },
 
   async getUserPages(userId: string): Promise<any[]> {
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const res: any = await conn.execute(
-        `SELECT data FROM pages WHERE user_id = :userId ORDER BY updated_at DESC`,
-        [userId]
-      );
-      return (res.rows || []).map((row: any) => JSON.parse(row.DATA || row.data));
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const res: any = await conn.execute(
+            `SELECT data FROM pages WHERE user_id = :userId ORDER BY updated_at DESC`,
+            [userId]
+          );
+          const pages = (res.rows || []).map((row: any) => JSON.parse(row.DATA || row.data));
+          pages.forEach((pg: any) => { oracleLocalStore.pages[pg.id] = pg; });
+          persistOracleLocalStore();
+          return pages;
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] getUserPages remote note:', err?.message || err);
+      }
     }
+    return Object.values(oracleLocalStore.pages).filter((pg: any) => pg.userId === userId || (!pg.userId && userId === 'admin'));
   },
 
   async getPageBySlug(slug: string): Promise<any | null> {
+    const cleanSlug = (slug || '').trim().toLowerCase();
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const res: any = await conn.execute(
-        `SELECT data FROM pages WHERE slug = :slug AND ROWNUM = 1`,
-        [slug]
-      );
-      if (res.rows && res.rows.length > 0) {
-        return JSON.parse(res.rows[0].DATA || res.rows[0].data);
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const res: any = await conn.execute(
+            `SELECT data FROM pages WHERE LOWER(slug) = LOWER(:slug) AND ROWNUM = 1`,
+            [cleanSlug]
+          );
+          if (res.rows && res.rows.length > 0) {
+            const page = JSON.parse(res.rows[0].DATA || res.rows[0].data);
+            oracleLocalStore.pages[page.id] = page;
+            persistOracleLocalStore();
+            return page;
+          }
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] getPageBySlug remote note:', err?.message || err);
       }
-      return null;
-    } finally {
-      await conn.close();
     }
+    return Object.values(oracleLocalStore.pages).find((pg: any) => (pg.slug || '').toLowerCase() === cleanSlug) || null;
   },
 
   async savePage(page: any): Promise<void> {
+    oracleLocalStore.pages[page.id] = page;
+    persistOracleLocalStore();
+
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const sql = `
-        MERGE INTO pages target
-        USING (SELECT :id as id, :user_id as user_id, :slug as slug, :data as data, :views as views FROM DUAL) source
-        ON (target.id = source.id)
-        WHEN MATCHED THEN
-          UPDATE SET target.user_id = source.user_id, target.slug = source.slug, target.data = source.data, target.views = source.views, target.updated_at = CURRENT_TIMESTAMP
-        WHEN NOT MATCHED THEN
-          INSERT (id, user_id, slug, data, views, created_at, updated_at)
-          VALUES (source.id, source.user_id, source.slug, source.data, source.views, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-      `;
-      await conn.execute(sql, {
-        id: page.id,
-        user_id: page.userId || 'admin',
-        slug: page.slug,
-        data: JSON.stringify(page),
-        views: page.views || 0
-      });
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const sql = `
+            MERGE INTO pages target
+            USING (SELECT :id as id, :user_id as user_id, :slug as slug, :data as data, :views as views FROM DUAL) source
+            ON (target.id = source.id)
+            WHEN MATCHED THEN
+              UPDATE SET target.user_id = source.user_id, target.slug = source.slug, target.data = source.data, target.views = source.views, target.updated_at = CURRENT_TIMESTAMP
+            WHEN NOT MATCHED THEN
+              INSERT (id, user_id, slug, data, views, created_at, updated_at)
+              VALUES (source.id, source.user_id, source.slug, source.data, source.views, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `;
+          await conn.execute(sql, {
+            id: page.id,
+            user_id: page.userId || 'admin',
+            slug: page.slug,
+            data: JSON.stringify(page),
+            views: page.views || 0
+          });
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] savePage remote note:', err?.message || err);
+      }
     }
   },
 
   async deletePage(pageId: string): Promise<void> {
+    delete oracleLocalStore.pages[pageId];
+    persistOracleLocalStore();
+
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      await conn.execute(`DELETE FROM pages WHERE id = :id`, [pageId]);
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          await conn.execute(`DELETE FROM pages WHERE id = :id`, [pageId]);
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] deletePage remote note:', err?.message || err);
+      }
     }
   },
 
   async incrementPageView(pageId: string): Promise<void> {
+    if (oracleLocalStore.pages[pageId]) {
+      oracleLocalStore.pages[pageId].views = (oracleLocalStore.pages[pageId].views || 0) + 1;
+      persistOracleLocalStore();
+    }
+
     const p = await getOraclePool();
-    if (!p) return;
-    try {
-      const conn = await p.getConnection();
-      await conn.execute(`UPDATE pages SET views = NVL(views, 0) + 1 WHERE id = :id`, [pageId]);
-      await conn.close();
-    } catch (e) {}
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          await conn.execute(`UPDATE pages SET views = NVL(views, 0) + 1 WHERE id = :id`, [pageId]);
+        } finally {
+          await conn.close();
+        }
+      } catch (e) {}
+    }
   },
 
   // Short Links
   async getUserShortLinks(userId: string): Promise<any[]> {
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const res: any = await conn.execute(
-        `SELECT data FROM short_links WHERE user_id = :userId ORDER BY created_at DESC`,
-        [userId]
-      );
-      return (res.rows || []).map((row: any) => JSON.parse(row.DATA || row.data));
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const res: any = await conn.execute(
+            `SELECT data FROM short_links WHERE user_id = :userId ORDER BY created_at DESC`,
+            [userId]
+          );
+          const links = (res.rows || []).map((row: any) => JSON.parse(row.DATA || row.data));
+          links.forEach((l: any) => { oracleLocalStore.shortLinks[l.id] = l; });
+          persistOracleLocalStore();
+          return links;
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] getUserShortLinks remote note:', err?.message || err);
+      }
     }
+    return Object.values(oracleLocalStore.shortLinks).filter((l: any) => l.userId === userId || (!l.userId && userId === 'admin'));
   },
 
   async getShortLinkByCode(shortCode: string): Promise<any | null> {
+    const cleanCode = (shortCode || '').trim();
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const res: any = await conn.execute(
-        `SELECT data FROM short_links WHERE short_code = :shortCode AND ROWNUM = 1`,
-        [shortCode]
-      );
-      if (res.rows && res.rows.length > 0) {
-        return JSON.parse(res.rows[0].DATA || res.rows[0].data);
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const res: any = await conn.execute(
+            `SELECT data FROM short_links WHERE short_code = :shortCode AND ROWNUM = 1`,
+            [cleanCode]
+          );
+          if (res.rows && res.rows.length > 0) {
+            const link = JSON.parse(res.rows[0].DATA || res.rows[0].data);
+            oracleLocalStore.shortLinks[link.id] = link;
+            persistOracleLocalStore();
+            return link;
+          }
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] getShortLinkByCode remote note:', err?.message || err);
       }
-      return null;
-    } finally {
-      await conn.close();
     }
+    return Object.values(oracleLocalStore.shortLinks).find((l: any) => (l.shortCode || '') === cleanCode) || null;
   },
 
   async saveShortLink(link: any): Promise<void> {
+    oracleLocalStore.shortLinks[link.id] = link;
+    persistOracleLocalStore();
+
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const sql = `
-        MERGE INTO short_links target
-        USING (SELECT :id as id, :user_id as user_id, :short_code as short_code, :title as title, :original_url as original_url, :clicks as clicks, :data as data FROM DUAL) source
-        ON (target.id = source.id)
-        WHEN MATCHED THEN
-          UPDATE SET target.title = source.title, target.original_url = source.original_url, target.clicks = source.clicks, target.data = source.data
-        WHEN NOT MATCHED THEN
-          INSERT (id, user_id, short_code, title, original_url, clicks, data, created_at)
-          VALUES (source.id, source.user_id, source.short_code, source.title, source.original_url, source.clicks, source.data, CURRENT_TIMESTAMP)
-      `;
-      await conn.execute(sql, {
-        id: link.id,
-        user_id: link.userId || 'admin',
-        short_code: link.shortCode,
-        title: link.title || '',
-        original_url: link.targetUrl || link.originalUrl || '',
-        clicks: link.clicks || 0,
-        data: JSON.stringify(link)
-      });
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const sql = `
+            MERGE INTO short_links target
+            USING (SELECT :id as id, :user_id as user_id, :short_code as short_code, :title as title, :original_url as original_url, :clicks as clicks, :data as data FROM DUAL) source
+            ON (target.id = source.id)
+            WHEN MATCHED THEN
+              UPDATE SET target.title = source.title, target.original_url = source.original_url, target.clicks = source.clicks, target.data = source.data
+            WHEN NOT MATCHED THEN
+              INSERT (id, user_id, short_code, title, original_url, clicks, data, created_at)
+              VALUES (source.id, source.user_id, source.short_code, source.title, source.original_url, source.clicks, source.data, CURRENT_TIMESTAMP)
+          `;
+          await conn.execute(sql, {
+            id: link.id,
+            user_id: link.userId || 'admin',
+            short_code: link.shortCode,
+            title: link.title || '',
+            original_url: link.targetUrl || link.originalUrl || '',
+            clicks: link.clicks || 0,
+            data: JSON.stringify(link)
+          });
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] saveShortLink remote note:', err?.message || err);
+      }
     }
   },
 
   async deleteShortLink(id: string): Promise<void> {
+    delete oracleLocalStore.shortLinks[id];
+    persistOracleLocalStore();
+
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      await conn.execute(`DELETE FROM short_links WHERE id = :id`, [id]);
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          await conn.execute(`DELETE FROM short_links WHERE id = :id`, [id]);
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] deleteShortLink remote note:', err?.message || err);
+      }
     }
   },
 
   async incrementShortLinkClick(id: string): Promise<void> {
+    if (oracleLocalStore.shortLinks[id]) {
+      oracleLocalStore.shortLinks[id].clicks = (oracleLocalStore.shortLinks[id].clicks || 0) + 1;
+      persistOracleLocalStore();
+    }
+
     const p = await getOraclePool();
-    if (!p) return;
-    try {
-      const conn = await p.getConnection();
-      await conn.execute(`UPDATE short_links SET clicks = NVL(clicks, 0) + 1 WHERE id = :id`, [id]);
-      await conn.close();
-    } catch (e) {}
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          await conn.execute(`UPDATE short_links SET clicks = NVL(clicks, 0) + 1 WHERE id = :id`, [id]);
+        } finally {
+          await conn.close();
+        }
+      } catch (e) {}
+    }
   },
 
   // Subscribers
   async getPageSubscribers(pageId: string): Promise<any[]> {
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const res: any = await conn.execute(
-        `SELECT id, page_id as "pageId", email, TO_CHAR(subscribed_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as "subscribedAt" FROM subscribers WHERE page_id = :pageId ORDER BY subscribed_at DESC`,
-        [pageId]
-      );
-      return res.rows || [];
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const res: any = await conn.execute(
+            `SELECT id, page_id as "pageId", email, TO_CHAR(subscribed_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as "subscribedAt" FROM subscribers WHERE page_id = :pageId ORDER BY subscribed_at DESC`,
+            [pageId]
+          );
+          return res.rows || [];
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] getPageSubscribers remote note:', err?.message || err);
+      }
     }
+    return oracleLocalStore.subscribers.filter((s: any) => s.pageId === pageId);
   },
 
   async addSubscriber(sub: { id: string; pageId: string; email: string; subscribedAt: string }): Promise<void> {
+    oracleLocalStore.subscribers.push(sub);
+    persistOracleLocalStore();
+
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      await conn.execute(
-        `INSERT INTO subscribers (id, page_id, email, subscribed_at) VALUES (:id, :page_id, :email, CURRENT_TIMESTAMP)`,
-        { id: sub.id, page_id: sub.pageId, email: sub.email }
-      );
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          await conn.execute(
+            `INSERT INTO subscribers (id, page_id, email, subscribed_at) VALUES (:id, :page_id, :email, CURRENT_TIMESTAMP)`,
+            { id: sub.id, page_id: sub.pageId, email: sub.email }
+          );
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] addSubscriber remote note:', err?.message || err);
+      }
     }
   },
 
   // Banners
   async getAllBanners(): Promise<any[]> {
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const res: any = await conn.execute(`SELECT data FROM banners ORDER BY created_at DESC`);
-      return (res.rows || []).map((row: any) => JSON.parse(row.DATA || row.data));
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const res: any = await conn.execute(`SELECT data FROM banners ORDER BY created_at DESC`);
+          const list = (res.rows || []).map((row: any) => JSON.parse(row.DATA || row.data));
+          if (list.length > 0) {
+            list.forEach((b: any) => { oracleLocalStore.banners[b.id] = b; });
+            persistOracleLocalStore();
+            return list;
+          }
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] getAllBanners remote note:', err?.message || err);
+      }
     }
+    const localList = Object.values(oracleLocalStore.banners);
+    return localList.length > 0 ? localList : DEFAULT_BANNERS;
   },
 
   async saveBanner(banner: any): Promise<void> {
+    oracleLocalStore.banners[banner.id] = banner;
+    persistOracleLocalStore();
+
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const sql = `
-        MERGE INTO banners target
-        USING (SELECT :id as id, :data as data FROM DUAL) source
-        ON (target.id = source.id)
-        WHEN MATCHED THEN
-          UPDATE SET target.data = source.data
-        WHEN NOT MATCHED THEN
-          INSERT (id, data, created_at)
-          VALUES (source.id, source.data, CURRENT_TIMESTAMP)
-      `;
-      await conn.execute(sql, { id: banner.id, data: JSON.stringify(banner) });
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const sql = `
+            MERGE INTO banners target
+            USING (SELECT :id as id, :data as data FROM DUAL) source
+            ON (target.id = source.id)
+            WHEN MATCHED THEN
+              UPDATE SET target.data = source.data
+            WHEN NOT MATCHED THEN
+              INSERT (id, data, created_at)
+              VALUES (source.id, source.data, CURRENT_TIMESTAMP)
+          `;
+          await conn.execute(sql, { id: banner.id, data: JSON.stringify(banner) });
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] saveBanner remote note:', err?.message || err);
+      }
     }
   },
 
   async deleteBanner(id: string): Promise<void> {
+    delete oracleLocalStore.banners[id];
+    persistOracleLocalStore();
+
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      await conn.execute(`DELETE FROM banners WHERE id = :id`, [id]);
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          await conn.execute(`DELETE FROM banners WHERE id = :id`, [id]);
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] deleteBanner remote note:', err?.message || err);
+      }
     }
   },
 
   // Analytics
   async getPageAnalytics(pageId: string): Promise<any | null> {
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const res: any = await conn.execute(
-        `SELECT data FROM analytics WHERE page_id = :pageId AND ROWNUM = 1`,
-        [pageId]
-      );
-      if (res.rows && res.rows.length > 0) {
-        return JSON.parse(res.rows[0].DATA || res.rows[0].data);
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const res: any = await conn.execute(
+            `SELECT data FROM analytics WHERE page_id = :pageId AND ROWNUM = 1`,
+            [pageId]
+          );
+          if (res.rows && res.rows.length > 0) {
+            const an = JSON.parse(res.rows[0].DATA || res.rows[0].data);
+            oracleLocalStore.analytics[pageId] = an;
+            persistOracleLocalStore();
+            return an;
+          }
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] getPageAnalytics remote note:', err?.message || err);
       }
-      return null;
-    } finally {
-      await conn.close();
     }
+    return oracleLocalStore.analytics[pageId] || null;
   },
 
   async savePageAnalytics(pageId: string, analytics: any): Promise<void> {
+    oracleLocalStore.analytics[pageId] = analytics;
+    persistOracleLocalStore();
+
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const sql = `
-        MERGE INTO analytics target
-        USING (SELECT :page_id as page_id, :data as data FROM DUAL) source
-        ON (target.page_id = source.page_id)
-        WHEN MATCHED THEN
-          UPDATE SET target.data = source.data, target.updated_at = CURRENT_TIMESTAMP
-        WHEN NOT MATCHED THEN
-          INSERT (page_id, data, updated_at)
-          VALUES (source.page_id, source.data, CURRENT_TIMESTAMP)
-      `;
-      await conn.execute(sql, { page_id: pageId, data: JSON.stringify(analytics) });
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const sql = `
+            MERGE INTO analytics target
+            USING (SELECT :page_id as page_id, :data as data FROM DUAL) source
+            ON (target.page_id = source.page_id)
+            WHEN MATCHED THEN
+              UPDATE SET target.data = source.data, target.updated_at = CURRENT_TIMESTAMP
+            WHEN NOT MATCHED THEN
+              INSERT (page_id, data, updated_at)
+              VALUES (source.page_id, source.data, CURRENT_TIMESTAMP)
+          `;
+          await conn.execute(sql, { page_id: pageId, data: JSON.stringify(analytics) });
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        console.warn('[Oracle] savePageAnalytics remote note:', err?.message || err);
+      }
     }
   },
 
   // Users
   async findUserByEmail(email: string): Promise<any | null> {
+    if (!email) return null;
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Check remote Oracle database if connected
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const res: any = await conn.execute(
-        `SELECT id as "id", email as "email", password_hash as "password_hash" FROM users WHERE email = :email AND ROWNUM = 1`,
-        [email]
-      );
-      if (res.rows && res.rows.length > 0) {
-        return res.rows[0];
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const res: any = await conn.execute(
+            `SELECT id as "id", email as "email", password_hash as "password_hash" FROM users WHERE LOWER(email) = LOWER(:email) AND ROWNUM = 1`,
+            [cleanEmail]
+          );
+          if (res.rows && res.rows.length > 0) {
+            const row = res.rows[0];
+            const u = {
+              id: row.id || row.ID,
+              email: (row.email || row.EMAIL || cleanEmail).toLowerCase(),
+              password_hash: row.password_hash || row.PASSWORD_HASH
+            };
+            oracleLocalStore.users[u.id] = u;
+            persistOracleLocalStore();
+            return u;
+          }
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        // NJS-518 / Listener failure handling
+        if (err?.message?.includes('NJS-518') || err?.message?.includes('ORA-12514')) {
+          if (pool) {
+            try { await pool.close(1); } catch (_) {}
+            pool = null;
+          }
+        }
+        console.warn('[Oracle] findUserByEmail remote query note:', err?.message || err);
       }
-      return null;
-    } finally {
-      await conn.close();
     }
+
+    return Object.values(oracleLocalStore.users).find((u: any) => u.email && u.email.toLowerCase() === cleanEmail) || null;
   },
 
   async createUser(user: { id: string; email: string; password_hash: string }): Promise<any> {
+    const cleanEmail = user.email.trim().toLowerCase();
+    const normalizedUser = {
+      id: user.id,
+      email: cleanEmail,
+      password_hash: user.password_hash
+    };
+
+    oracleLocalStore.users[normalizedUser.id] = normalizedUser;
+    persistOracleLocalStore();
+
     const p = await getOraclePool();
-    if (!p) throw new Error('No Oracle pool');
-    const conn = await p.getConnection();
-    try {
-      const sql = `
-        MERGE INTO users target
-        USING (SELECT :id as id, :email as email, :password_hash as password_hash FROM DUAL) source
-        ON (target.id = source.id)
-        WHEN MATCHED THEN
-          UPDATE SET target.password_hash = source.password_hash
-        WHEN NOT MATCHED THEN
-          INSERT (id, email, password_hash, created_at)
-          VALUES (source.id, source.email, source.password_hash, CURRENT_TIMESTAMP)
-      `;
-      await conn.execute(sql, {
-        id: user.id,
-        email: user.email,
-        password_hash: user.password_hash
-      });
-      return user;
-    } finally {
-      await conn.close();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          const sql = `
+            MERGE INTO users target
+            USING (SELECT :id as id, :email as email, :password_hash as password_hash FROM DUAL) source
+            ON (LOWER(target.email) = LOWER(source.email))
+            WHEN MATCHED THEN
+              UPDATE SET target.password_hash = source.password_hash
+            WHEN NOT MATCHED THEN
+              INSERT (id, email, password_hash, created_at)
+              VALUES (source.id, source.email, source.password_hash, CURRENT_TIMESTAMP)
+          `;
+          await conn.execute(sql, {
+            id: normalizedUser.id,
+            email: normalizedUser.email,
+            password_hash: normalizedUser.password_hash
+          });
+        } finally {
+          await conn.close();
+        }
+      } catch (err: any) {
+        if (err?.message?.includes('NJS-518') || err?.message?.includes('ORA-12514')) {
+          if (pool) {
+            try { await pool.close(1); } catch (_) {}
+            pool = null;
+          }
+        }
+        console.warn('[Oracle] createUser remote note:', err?.message || err);
+      }
     }
+
+    return normalizedUser;
+  },
+
+  async updateUserPassword(email: string, password_hash: string): Promise<boolean> {
+    const cleanEmail = email.trim().toLowerCase();
+    const existing = Object.values(oracleLocalStore.users).find((u: any) => u.email && u.email.toLowerCase() === cleanEmail) as any;
+    if (existing) {
+      existing.password_hash = password_hash;
+      persistOracleLocalStore();
+    }
+
+    const p = await getOraclePool();
+    if (p) {
+      try {
+        const conn = await p.getConnection();
+        try {
+          await conn.execute(
+            `UPDATE users SET password_hash = :password_hash WHERE LOWER(email) = LOWER(:email)`,
+            { password_hash, email: cleanEmail }
+          );
+          return true;
+        } finally {
+          await conn.close();
+        }
+      } catch (e: any) {
+        if (e?.message?.includes('NJS-518') || e?.message?.includes('ORA-12514')) {
+          if (pool) {
+            try { await pool.close(1); } catch (_) {}
+            pool = null;
+          }
+        }
+        console.warn('[Oracle] updateUserPassword remote note:', e?.message || e);
+      }
+    }
+    return true;
   }
 };
+
+// Auto-flush local data to Oracle Cloud when connection is active
+export async function flushLocalStoreToOracle() {
+  const p = await getOraclePool();
+  if (!p) return;
+  try {
+    for (const user of Object.values(oracleLocalStore.users)) {
+      try { await oracleDb.createUser(user); } catch (e) {}
+    }
+    for (const page of Object.values(oracleLocalStore.pages)) {
+      try { await oracleDb.savePage(page); } catch (e) {}
+    }
+    for (const link of Object.values(oracleLocalStore.shortLinks)) {
+      try { await oracleDb.saveShortLink(link); } catch (e) {}
+    }
+    for (const banner of Object.values(oracleLocalStore.banners)) {
+      try { await oracleDb.saveBanner(banner); } catch (e) {}
+    }
+    console.log('[Oracle] Local data synchronized to Oracle Autonomous Database.');
+  } catch (err) {
+    console.warn('[Oracle] Data flush note:', err);
+  }
+}
+
+// Background Perennial Connection Loop
+let perennialStarted = false;
+export function startPerennialOracleConnection() {
+  if (perennialStarted) return;
+  perennialStarted = true;
+
+  console.log('[Oracle Perennial] Starting persistent connection loop for Oracle Autonomous Database...');
+
+  const tryConnect = async () => {
+    if (!activeConfig.password || !activeConfig.password.trim()) {
+      return false;
+    }
+    try {
+      const connected = await initOracleDatabase();
+      if (connected) {
+        console.log('[Oracle Perennial] Connected to Oracle Database. Flushing local records...');
+        await flushLocalStoreToOracle();
+        return true;
+      }
+    } catch (e: any) {}
+    return false;
+  };
+
+  tryConnect().catch(() => {});
+
+  // Continuous perennial heartbeat check
+  setInterval(async () => {
+    try {
+      if (activeConfig.password && activeConfig.password.trim()) {
+        const p = await getOraclePool();
+        if (p) {
+          const conn = await p.getConnection();
+          try {
+            await conn.execute('SELECT 1 FROM DUAL');
+            if (!isConnected) {
+              isConnected = true;
+              lastError = null;
+              console.log('[Oracle Perennial] Connection active & healthy!');
+              flushLocalStoreToOracle().catch(() => {});
+            }
+          } finally {
+            await conn.close();
+          }
+        } else {
+          await tryConnect();
+        }
+      }
+    } catch (e: any) {
+      isConnected = false;
+      if (pool) {
+        try { await pool.close(1); } catch (_) {}
+        pool = null;
+      }
+    }
+  }, 15000);
+}

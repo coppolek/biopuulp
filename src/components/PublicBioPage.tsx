@@ -444,26 +444,55 @@ const MicroblogArticleCard = ({ module, theme, lang = "it" }: MicroblogArticlePr
   );
 };
 
+const DEFAULT_SPONSOR_BANNERS: AppBanner[] = [
+  {
+    id: 'default_sponsor_1',
+    name: 'Oracle Cloud Infrastructure',
+    type: 'image',
+    position: 'short_url',
+    active: true,
+    imageUrl: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80',
+    linkUrl: 'https://cloud.oracle.com',
+    text: 'Sponsor Ufficiale: Fino a 300$ di crediti e Database Always Free su Oracle Cloud'
+  },
+  {
+    id: 'default_sponsor_2',
+    name: 'Tech & Creator Deals',
+    type: 'image',
+    position: 'short_url',
+    active: true,
+    imageUrl: 'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?auto=format&fit=crop&w=1200&q=80',
+    linkUrl: 'https://amazon.it',
+    text: 'Scopri le offerte su accessori e strumenti per creator'
+  }
+];
+
 export default function PublicBioPage({ page, isPreview = false }: { page: BioPage, isPreview?: boolean }) {
   const { profile, theme, links, socials, modules } = page;
   const lang = page.language || 'it';
   const [searchQuery, setSearchQuery] = useState('');
-  const [banners, setBanners] = useState<AppBanner[]>([]);
+  const [banners, setBanners] = useState<AppBanner[]>(DEFAULT_SPONSOR_BANNERS);
   const [confirmLink, setConfirmLink] = useState<(Partial<BioLink> & { url: string; isMonetized?: boolean }) | null>(null);
   const [adCountdown, setAdCountdown] = useState(5);
-  const [activeAdBanner, setActiveAdBanner] = useState<AppBanner | null>(null);
+  const [activeAdBanner, setActiveAdBanner] = useState<AppBanner | null>(DEFAULT_SPONSOR_BANNERS[0]);
+
+  useEffect(() => {
+    getAllBanners().then(data => {
+      const active = (data || []).filter(b => b.active);
+      if (active.length > 0) {
+        setBanners(active);
+      }
+    }).catch(err => console.error("Error loading banners", err));
+  }, []);
 
   useEffect(() => {
     if (confirmLink?.isMonetized) {
       setAdCountdown(5);
       const activeBanners = banners.filter(b => b.active);
-      if (activeBanners.length > 0) {
-        const shortUrlBanners = activeBanners.filter(b => b.position === "short_url");
-        const pool = shortUrlBanners.length > 0 ? shortUrlBanners : activeBanners;
-        setActiveAdBanner(pool[Math.floor(Math.random() * pool.length)]);
-      } else {
-        setActiveAdBanner(null);
-      }
+      const pool = activeBanners.length > 0 ? activeBanners : DEFAULT_SPONSOR_BANNERS;
+      const shortUrlBanners = pool.filter(b => b.position === "short_url");
+      const selectedPool = shortUrlBanners.length > 0 ? shortUrlBanners : pool;
+      setActiveAdBanner(selectedPool[Math.floor(Math.random() * selectedPool.length)]);
     }
   }, [confirmLink, banners]);
 
@@ -477,21 +506,21 @@ export default function PublicBioPage({ page, isPreview = false }: { page: BioPa
   }, [confirmLink, adCountdown]);
 
   const handleLinkClick = (linkToOpen: BioLink, e: React.MouseEvent) => {
-    e.preventDefault();
     const isMonetized = !!(linkToOpen.monetized || page.monetizeAllLinks);
+    if (!isMonetized) {
+      if (!isPreview && linkToOpen.id) {
+        trackLinkClick(page.id, linkToOpen.id);
+      }
+      return;
+    }
+
+    // Intercept monetized link to display 5s sponsor interstitial
+    e.preventDefault();
     setConfirmLink({
       ...linkToOpen,
-      isMonetized
+      isMonetized: true
     });
   };
-
-  useEffect(() => {
-    if (!isPreview) {
-      getAllBanners().then(data => {
-        setBanners(data.filter(b => b.active));
-      }).catch(err => console.error("Error loading banners", err));
-    }
-  }, [isPreview]);
 
   const topBanners = banners.filter(b => b.position === 'top');
   const bottomBanners = banners.filter(b => b.position === 'bottom');

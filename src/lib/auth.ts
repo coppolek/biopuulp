@@ -17,6 +17,18 @@ class CustomAuth {
         this.currentUser = JSON.parse(saved);
       }
     } catch (e) {}
+
+    // Multi-tab synchronization
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'puulp_auth_user') {
+          try {
+            this.currentUser = e.newValue ? JSON.parse(e.newValue) : null;
+            this.notify();
+          } catch (err) {}
+        }
+      });
+    }
   }
 
   notify() {
@@ -27,6 +39,17 @@ class CustomAuth {
         console.warn('Auth callback error:', err);
       }
     });
+  }
+
+  async signOut(): Promise<void> {
+    this.currentUser = null;
+    try {
+      localStorage.removeItem('puulp_auth_user');
+    } catch (e) {}
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (e) {}
+    this.notify();
   }
 }
 
@@ -42,10 +65,11 @@ export function onAuthStateChanged(authInstance: CustomAuth, callback: AuthCallb
 }
 
 export async function signInWithEmailAndPassword(authInstance: CustomAuth, email: string, password: string): Promise<{ user: User }> {
+  const cleanEmail = (email || '').trim().toLowerCase();
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ email: cleanEmail, password })
   });
   const data = await res.json();
   if (!res.ok) {
@@ -60,10 +84,11 @@ export async function signInWithEmailAndPassword(authInstance: CustomAuth, email
 }
 
 export async function createUserWithEmailAndPassword(authInstance: CustomAuth, email: string, password: string): Promise<{ user: User }> {
+  const cleanEmail = (email || '').trim().toLowerCase();
   const res = await fetch('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ email: cleanEmail, password })
   });
   const data = await res.json();
   if (!res.ok) {
@@ -77,21 +102,27 @@ export async function createUserWithEmailAndPassword(authInstance: CustomAuth, e
   return { user: data.user };
 }
 
-export async function signOut(authInstance: CustomAuth): Promise<void> {
-  authInstance.currentUser = null;
-  try {
-    localStorage.removeItem('puulp_auth_user');
-  } catch (e) {}
-  authInstance.notify();
+export async function signOut(authInstance: CustomAuth = auth): Promise<void> {
+  return authInstance.signOut();
 }
 
-export async function sendPasswordResetEmail(authInstance: CustomAuth, email: string): Promise<boolean> {
-  return true;
+export async function sendPasswordResetEmail(authInstance: CustomAuth, email: string, newPassword?: string): Promise<{ success: boolean; message: string; updated?: boolean }> {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const res = await fetch('/api/auth/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: cleanEmail, newPassword })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Errore durante la richiesta di reset password');
+  }
+  return data;
 }
 
 export class GoogleAuthProvider {}
 
-export async function signInWithPopup(authInstance: CustomAuth, provider: any): Promise<{ user: User }> {
+export async function signInWithPopup(authInstance: CustomAuth, provider?: any): Promise<{ user: User }> {
   const defaultEmail = 'coppolek@gmail.com';
-  return await createUserWithEmailAndPassword(authInstance, defaultEmail, 'sso_google_account');
+  return await signInWithEmailAndPassword(authInstance, defaultEmail, 'sso_google_account');
 }

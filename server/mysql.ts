@@ -570,24 +570,55 @@ export async function importDatabaseBackup(payload: any, mode: 'merge' | 'replac
   };
 }
 
+export const DEFAULT_BANNERS = [
+  {
+    id: 'banner_sponsor_cloud',
+    name: 'Oracle Cloud Free Tier',
+    type: 'image',
+    position: 'short_url',
+    active: true,
+    imageUrl: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80',
+    linkUrl: 'https://cloud.oracle.com',
+    text: 'Sponsor Ufficiale: Fino a 300$ di crediti e Database Always Free su Oracle Cloud'
+  },
+  {
+    id: 'banner_sponsor_tech',
+    name: 'Tech & Lifestyle Gear',
+    type: 'image',
+    position: 'short_url',
+    active: true,
+    imageUrl: 'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?auto=format&fit=crop&w=1200&q=80',
+    linkUrl: 'https://amazon.it',
+    text: 'Scopri le migliori offerte tecnologiche e accessori per creator'
+  }
+];
+
 // Data Access Methods
 export const mysqlDb = {
   // Users
   async findUserByEmail(email: string) {
+    if (!email) return null;
+    const cleanEmail = email.trim().toLowerCase();
     const p = await getDbPool();
     if (isConnected && p) {
       try {
-        const [rows]: any = await p.query('SELECT * FROM users WHERE email = ? LIMIT 1', [email]);
+        const [rows]: any = await p.query('SELECT * FROM users WHERE LOWER(email) = ? LIMIT 1', [cleanEmail]);
         if (rows.length > 0) return rows[0];
       } catch (e) {
         console.warn('[MySQL] findUserByEmail fallback:', e);
       }
     }
-    return Object.values(localStore.users).find((u: any) => u.email === email) || null;
+    return Object.values(localStore.users).find((u: any) => u.email && u.email.toLowerCase() === cleanEmail) || null;
   },
 
   async createUser(user: { id: string; email: string; password_hash: string }) {
-    localStore.users[user.id] = user;
+    const cleanEmail = user.email.trim().toLowerCase();
+    const normalizedUser = {
+      id: user.id,
+      email: cleanEmail,
+      password_hash: user.password_hash
+    };
+    localStore.users[normalizedUser.id] = normalizedUser;
     persistLocalStore();
 
     const p = await getDbPool();
@@ -595,13 +626,31 @@ export const mysqlDb = {
       try {
         await p.query(
           'INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash)',
-          [user.id, user.email, user.password_hash]
+          [normalizedUser.id, normalizedUser.email, normalizedUser.password_hash]
         );
       } catch (e) {
         console.warn('[MySQL] createUser error:', e);
       }
     }
-    return user;
+    return normalizedUser;
+  },
+
+  async updateUserPassword(email: string, password_hash: string) {
+    const cleanEmail = email.trim().toLowerCase();
+    const user = Object.values(localStore.users).find((u: any) => u.email && u.email.toLowerCase() === cleanEmail) as any;
+    if (user) {
+      user.password_hash = password_hash;
+      persistLocalStore();
+    }
+    const p = await getDbPool();
+    if (isConnected && p) {
+      try {
+        await p.query('UPDATE users SET password_hash = ? WHERE LOWER(email) = ?', [password_hash, cleanEmail]);
+      } catch (e) {
+        console.warn('[MySQL] updateUserPassword error:', e);
+      }
+    }
+    return true;
   },
 
   // Pages
@@ -833,12 +882,15 @@ export const mysqlDb = {
     if (isConnected && p) {
       try {
         const [rows]: any = await p.query('SELECT data FROM banners ORDER BY created_at DESC');
-        return rows.map((r: any) => JSON.parse(r.data));
+        const list = rows.map((r: any) => JSON.parse(r.data));
+        if (list.length > 0) return list;
       } catch (e) {
         console.warn('[MySQL] getAllBanners fallback:', e);
       }
     }
-    return Object.values(localStore.banners);
+    const localList = Object.values(localStore.banners);
+    if (localList.length > 0) return localList;
+    return DEFAULT_BANNERS;
   },
 
   async saveBanner(banner: any) {

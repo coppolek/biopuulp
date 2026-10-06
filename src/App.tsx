@@ -2,15 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { Toaster, toast } from 'react-hot-toast';
-import { Copy, Files, Globe, Instagram, Twitter, Youtube, Linkedin, Github, Facebook, ExternalLink, Upload, X, Image as ImageIcon, Database } from 'lucide-react';
+import { Copy, Files, Globe, Instagram, Twitter, Youtube, Linkedin, Github, Facebook, ExternalLink, Upload, X, Image as ImageIcon, Database, LogOut, ShieldCheck } from 'lucide-react';
 import PublicBioPage from './components/PublicBioPage';
 import ShortLinkRedirect from './components/ShortLinkRedirect';
 import EditorDashboard from './components/EditorDashboard';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import Auth from './components/Auth';
 import PublicView from './components/PublicView';
-import AdminDatabaseManager from './components/AdminDatabaseManager';
-import { auth, onAuthStateChanged, User } from './lib/auth';
+import { auth, onAuthStateChanged, signOut, User } from './lib/auth';
 import { getUserPages, createNewPage, savePage, getAllPages, deletePage, getAllBanners, saveBanner, deleteBanner, getUserShortLinks, createShortLink, deleteShortLink, updateShortLink } from './lib/db';
 import { BioPage, AppBanner } from './types';
 
@@ -86,6 +85,19 @@ function AppDashboard() {
   const handleViewAnalytics = (page: BioPage) => {
     setCurrentPage(page);
     setView('analytics');
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      toast.success("Disconnessione effettuata con successo");
+      setView('dashboard');
+      setCurrentPage(null);
+      setPages([]);
+      setShortLinks([]);
+    } catch (e) {
+      console.warn("SignOut error:", e);
+    }
   };
 
   const handleEditPage = (page: BioPage) => {
@@ -168,7 +180,8 @@ function AppDashboard() {
           onEdit={handleEditPage} 
           onViewAnalytics={handleViewAnalytics}
           onCreate={handleCreatePage}
-          onSignOut={() => auth.signOut()}
+          onSignOut={handleSignOut}
+          userEmail={user.email}
           onDuplicate={handleDuplicatePage}
           onCreateShortLink={handleCreateShortLink}
           onUpdateShortLink={handleUpdateShortLink}
@@ -223,7 +236,7 @@ const compressAndLoadImage = (file: File, callback: (url: string) => void) => {
   reader.readAsDataURL(file);
 };
 
-function DashboardView({ pages, shortLinks = [], onEdit, onViewAnalytics, onCreate, onDuplicate, onSignOut, isAdmin, onAdminClick, onCreateShortLink, onUpdateShortLink, onDeleteShortLink }: { pages: BioPage[], shortLinks?: any[], onEdit: (page: BioPage) => void, onViewAnalytics?: (page: BioPage) => void, onCreate: (slug: string) => void, onDuplicate: (page: BioPage, newSlug: string) => void, onSignOut: () => void, isAdmin?: boolean, onAdminClick?: () => void, onCreateShortLink?: (data: any) => void, onUpdateShortLink?: (id: string, data: any) => void, onDeleteShortLink?: (id: string) => void }) {
+function DashboardView({ pages, shortLinks = [], onEdit, onViewAnalytics, onCreate, onDuplicate, onSignOut, isAdmin, onAdminClick, onCreateShortLink, onUpdateShortLink, onDeleteShortLink, userEmail }: { pages: BioPage[], shortLinks?: any[], onEdit: (page: BioPage) => void, onViewAnalytics?: (page: BioPage) => void, onCreate: (slug: string) => void, onDuplicate: (page: BioPage, newSlug: string) => void, onSignOut: () => void, isAdmin?: boolean, onAdminClick?: () => void, onCreateShortLink?: (data: any) => void, onUpdateShortLink?: (id: string, data: any) => void, onDeleteShortLink?: (id: string) => void, userEmail?: string | null }) {
   const [activeTab, setActiveTab] = useState<'bio' | 'short'>('bio');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newSlug, setNewSlug] = useState('');
@@ -389,18 +402,31 @@ function DashboardView({ pages, shortLinks = [], onEdit, onViewAnalytics, onCrea
           <div className="w-8 h-8 bg-black text-white rounded-lg flex items-center justify-center font-bold">B•</div>
           <span className="font-black text-xl tracking-tighter">PUULP</span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {isAdmin && (
             <button 
               onClick={onAdminClick}
-              className="text-xs font-bold text-white bg-black px-4 py-2 rounded-lg hover:bg-gray-800 uppercase tracking-widest mr-4"
+              className="text-xs font-bold text-white bg-black px-3.5 py-2 rounded-xl hover:bg-gray-800 uppercase tracking-widest flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
             >
-              Admin
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Admin DB</span>
             </button>
           )}
-          <button onClick={onSignOut} className="text-xs font-bold text-gray-500 hover:text-black uppercase tracking-widest">Esci</button>
-          <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
-            <img src="https://i.pravatar.cc/300?img=68" alt="User" />
+          {userEmail && (
+            <span className="hidden sm:inline-block text-xs font-semibold text-gray-600 bg-gray-100 px-3 py-1.5 rounded-xl border border-gray-200 truncate max-w-[200px]" title={userEmail}>
+              {userEmail}
+            </span>
+          )}
+          <button 
+            onClick={onSignOut} 
+            className="text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-3.5 py-1.5 rounded-xl uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+            title="Disconnetti account"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Esci</span>
+          </button>
+          <div className="w-9 h-9 rounded-full bg-black text-white text-xs font-bold flex items-center justify-center border-2 border-white shadow-xs overflow-hidden">
+            {userEmail ? userEmail.charAt(0).toUpperCase() : 'U'}
           </div>
         </div>
       </header>
@@ -843,7 +869,7 @@ function AdminView({ onBack }: { onBack: () => void }) {
   const [allPages, setAllPages] = useState<BioPage[]>([]);
   const [allBanners, setAllBanners] = useState<AppBanner[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'pages'|'banners'|'database'>('pages');
+  const [activeTab, setActiveTab] = useState<'pages'|'banners'>('pages');
 
   // Form states for new banner
   const [isBannerModalOpen, setIsBannerModalOpen] = useState(false);
@@ -1096,6 +1122,10 @@ function AdminView({ onBack }: { onBack: () => void }) {
             <h1 className="text-3xl font-black italic uppercase tracking-tighter text-red-600">Pannello Amministratore</h1>
             <p className="text-gray-500 mt-2 font-medium">Gestisci le pagine e la monetizzazione globale (Banner).</p>
           </div>
+          <div className="flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full text-emerald-800 text-xs font-bold shadow-xs">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Oracle Database • Connessione Perenne</span>
+          </div>
         </div>
         
         <div className="flex gap-4 mb-6 border-b border-gray-200">
@@ -1111,24 +1141,12 @@ function AdminView({ onBack }: { onBack: () => void }) {
           >
             Banners ({allBanners.length})
           </button>
-          <button 
-            className={`px-4 py-2 font-bold uppercase tracking-widest text-sm border-b-2 flex items-center gap-2 ${activeTab === 'database' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-400 hover:text-gray-900'}`}
-            onClick={() => setActiveTab('database')}
-          >
-            <Database className="w-4 h-4" />
-            <span>Database & Backup</span>
-          </button>
         </div>
 
         {loading ? (
           <div className="text-center py-20">
             <p className="text-gray-500 font-bold uppercase tracking-widest text-sm">Caricamento...</p>
           </div>
-        ) : activeTab === 'database' ? (
-          <AdminDatabaseManager onRefreshAllData={() => {
-            getAllPages().then(setAllPages);
-            getAllBanners().then(setAllBanners);
-          }} />
         ) : activeTab === 'pages' ? (
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
             <table className="w-full text-left">

@@ -79,7 +79,7 @@ export default function EditorDashboard({
           </button>
           <button 
             onClick={() => {
-              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'folder' as const, clicks: 0, children: [] };
+              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'folder' as const, clicks: 0, children: [], monetized: page.monetizeAllLinks || false };
               setPage({ ...page, links: [...page.links, newLink] });
             }}
             className="w-full py-4 border border-gray-200 bg-white rounded-2xl flex flex-col items-center justify-center gap-2 text-black hover:border-black transition-all group"
@@ -461,19 +461,21 @@ const SortableLinkItem: React.FC<{
                       type="button"
                       title="Monetizza link cartella (annuncio 5s)"
                       onClick={() => {
+                        const currentStatus = !!(child.monetized || page.monetizeAllLinks);
+                        const nextStatus = !currentStatus;
                         const newChildren = [...(link.children || [])];
-                        newChildren[idx] = { ...newChildren[idx], monetized: !newChildren[idx].monetized };
+                        newChildren[idx] = { ...newChildren[idx], monetized: nextStatus };
                         const newLinks = page.links.map(l => l.id === link.id ? { ...l, children: newChildren } : l);
                         setPage({ ...page, links: newLinks });
                       }}
-                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 border transition-all cursor-pointer ${
+                      className={`text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1 border transition-all cursor-pointer ${
                         (child.monetized || page.monetizeAllLinks)
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold"
-                          : "bg-gray-50 text-gray-400 border-gray-200 hover:text-black"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold shadow-2xs"
+                          : "bg-gray-50 text-gray-400 border-gray-200 hover:text-black hover:border-gray-300"
                       }`}
                     >
-                      <DollarSign className="w-2.5 h-2.5" />
-                      {(child.monetized || page.monetizeAllLinks) ? "Ad 5s" : "Monetizza"}
+                      <DollarSign className="w-2.5 h-2.5 text-emerald-600" />
+                      {(child.monetized || page.monetizeAllLinks) ? "Monetizzato (5s)" : "Monetizza"}
                     </button>
                     <div className="flex gap-1">
                       <button 
@@ -640,18 +642,25 @@ const SortableLinkItem: React.FC<{
           <button
             type="button"
             onClick={() => {
-              const newLinks = page.links.map(l => l.id === link.id ? { ...l, monetized: !l.monetized } : l);
-              setPage({ ...page, links: newLinks });
+              const currentStatus = !!(link.monetized || page.monetizeAllLinks);
+              const nextStatus = !currentStatus;
+              let newLinks = page.links.map(l => l.id === link.id ? { ...l, monetized: nextStatus } : l);
+              let newMonetizeAll = page.monetizeAllLinks;
+              if (!nextStatus && page.monetizeAllLinks) {
+                newMonetizeAll = false;
+                newLinks = page.links.map(l => ({ ...l, monetized: l.id === link.id ? false : (l.monetized ?? true) }));
+              }
+              setPage({ ...page, monetizeAllLinks: newMonetizeAll, links: newLinks });
             }}
             className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 border transition-all cursor-pointer ${
               (link.monetized || page.monetizeAllLinks)
-                ? "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold shadow-2xs"
                 : "bg-gray-50 text-gray-400 border-gray-200 hover:text-black hover:border-gray-300"
             }`}
             title="Mostra annuncio sponsorizzato da 5s prima del reindirizzamento"
           >
-            <DollarSign className="w-3 h-3" />
-            {(link.monetized || page.monetizeAllLinks) ? "Monetizzato (5s Ad)" : "Monetizza"}
+            <DollarSign className="w-3 h-3 text-emerald-600" />
+            {(link.monetized || page.monetizeAllLinks) ? "Monetizzato (Annuncio 5s)" : "Monetizza Link"}
           </button>
           {link.tags?.map(tag => (
             <span key={tag} className="text-[10px] font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded uppercase tracking-wider">
@@ -916,7 +925,7 @@ function LinksEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage
           <button 
             type="button"
             onClick={() => {
-              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'standard' as const, clicks: 0 };
+              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'standard' as const, clicks: 0, monetized: page.monetizeAllLinks || false };
               setPage({ ...page, links: [...page.links, newLink] });
             }}
             className="w-full py-4 border border-gray-200 bg-white rounded-2xl flex flex-col items-center justify-center gap-2 text-black hover:border-black transition-all"
@@ -929,7 +938,7 @@ function LinksEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage
           
           <button 
             onClick={() => {
-              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'youtube' as const, clicks: 0 };
+              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'youtube' as const, clicks: 0, monetized: page.monetizeAllLinks || false };
               setPage({ ...page, links: [...page.links, newLink] });
             }}
             className="w-full py-4 border border-gray-200 bg-white rounded-2xl flex flex-col items-center justify-center gap-2 text-black hover:border-[#FF0000] transition-all group"
@@ -942,7 +951,7 @@ function LinksEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage
 
           <button 
             onClick={() => {
-              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'spotify' as const, clicks: 0 };
+              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'spotify' as const, clicks: 0, monetized: page.monetizeAllLinks || false };
               setPage({ ...page, links: [...page.links, newLink] });
             }}
             className="w-full py-4 border border-gray-200 bg-white rounded-2xl flex flex-col items-center justify-center gap-2 text-black hover:border-[#1DB954] transition-all group"
@@ -955,7 +964,7 @@ function LinksEditor({ page, setPage }: { page: BioPage, setPage: (page: BioPage
 
           <button 
             onClick={() => {
-              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'amazon' as const, clicks: 0, price: '' };
+              const newLink = { id: Date.now().toString(), title: '', url: '', link_type: 'amazon' as const, clicks: 0, price: '', monetized: page.monetizeAllLinks || false };
               setPage({ ...page, links: [...page.links, newLink] });
             }}
             className="w-full py-4 border border-gray-200 bg-white rounded-2xl flex flex-col items-center justify-center gap-2 text-black hover:border-[#FF9900] transition-all group"

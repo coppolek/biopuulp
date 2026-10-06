@@ -1,0 +1,103 @@
+{
+  "pages": {
+    "page_test_public_1": {
+      "id": "page_test_public_1",
+      "userId": "user_admin_coppolek",
+      "slug": "prova-pubblica",
+      "profile": {
+        "name": "Mario Rossi",
+        "bio": "Creator & Developer",
+        "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200"
+      },
+      "links": [
+        {
+          "id": "1",
+          "title": "Il mio Canale YouTube",
+          "url": "https://youtube.com",
+          "active": true
+        },
+        {
+          "id": "2",
+          "title": "Il mio Shop Online",
+          "url": "https://amazon.it",
+          "active": true
+        }
+      ],
+      "theme": "minimal",
+      "views": 0
+    }
+  },
+  "shortLinks": {
+    "link_test_public_1": {
+      "id": "link_test_public_1",
+      "userId": "user_admin_coppolek",
+      "shortCode": "canale",
+      "originalUrl": "https://youtube.com",
+      "targetUrl": "https://youtube.com",
+      "title": "Canale YouTube Ufficiale",
+      "clicks": 0,
+      "createdAt": "2026-10-06T09:27:40.691Z"
+    }
+  },
+  "subscribers": [],
+  "banners": {
+    "banner_sponsor_cloud": {
+      "id": "banner_sponsor_cloud",
+      "name": "Oracle Cloud Free Tier",
+      "type": "image",
+      "position": "short_url",
+      "active": true,
+      "imageUrl": "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80",
+      "linkUrl": "https://cloud.oracle.com",
+      "text": "Sponsor Ufficiale: Fino a 300$ di crediti e Database Always Free su Oracle Cloud"
+    },
+    "banner_sponsor_tech": {
+      "id": "banner_sponsor_tech",
+      "name": "Tech & Lifestyle Gear",
+      "type": "image",
+      "position": "short_url",
+      "active": true,
+      "imageUrl": "https://images.unsplash.com/photo-1526738549149-8e07eca6c147?auto=format&fit=crop&w=1200&q=80",
+      "linkUrl": "https://amazon.it",
+      "text": "Scopri le migliori offerte tecnologiche e accessori per creator"
+    }
+  },
+  "analytics": {},
+  "users": {
+    "user_1791269445795_78q5f": {
+      "id": "user_1791269445795_78q5f",
+      "email": "test_user_xyz@domain.com",
+      "password_hash": "9af04839c5c42d9345ab6076d664367f:c4c6ddeebc2320e5fb5b613226ca71d43ecdcc9bfbcc90150dab34b712eccfb9491de733eeba4c2b769093385f1c61e826fda97401128713676fd82702457c1f"
+    },
+    "user_1791271130208_u8hk4": {
+      "id": "user_1791271130208_u8hk4",
+      "email": "test@example.com",
+      "password_hash": "2433b99ae2333af2382674f235f44cae:c5619e489668f2397ef365e669b373504af927c98414459bceaa7be4d6c40d3716500bceb48355ea9c04aa5e2c4c41d5848429fe09bf4f6b30e5df7d21d1fdcd"
+    },
+    "user_admin_coppolek": {
+      "id": "user_admin_coppolek",
+      "email": "coppolek@gmail.com",
+      "password_hash": "cc64d6b0de2c2b19efd9e27ff5e05cba:3a5869175f9471a55c646a102ff91df5490762ee03a6f29cf716e7d61347f2492b7a990a6f3be61aaa4b90fc9ebfa48dc26d956f5d5fa83156389d39136c9893"
+    },
+    "user_1791271939005_z5kr7": {
+      "id": "user_1791271939005_z5kr7",
+      "email": "newcreator@domain.com",
+      "password_hash": "b84805ac0d75de5a9a9dbe48a7a336ac:777e08d6279498005a1658038f7524c0ded66517a3edac384349014ce20ffbd24276abe7534da63a7bd8eb56662a40dca34918b935d1d8fe1a911040683efb80"
+    },
+    "user_1791272197883_ngaje": {
+      "id": "user_1791272197883_ngaje",
+      "email": "paycoppolek@gmail.com",
+      "password_hash": "27770c8618434ffa9223ba7c07851acd:3ae41bc5508d9661637c3bd9e77ac4ed5e3a9db97ca5ccdcc77b38912ad64e4d1445e96d75f2a1c807f79c667c2d1bec733a7414149768c78acac8ccdf350669"
+    },
+    "user_1791273049125_aqiku": {
+      "id": "user_1791273049125_aqiku",
+      "email": "test_1791273049065@example.com",
+      "password_hash": "b0816754da4687716c67041362d6c0f8:c70cc718905c82941e036d0da64a02686a48c4cb788d055a762077b97d9eae12a58916fcb2db4d6ebadf8ce4140768645b9d56db49f1bf41d896e7bb588d3c9b"
+    },
+    "user_1791273448813_x3cdd": {
+      "id": "user_1791273448813_x3cdd",
+      "email": "oracle_user_1791273448753@biolink.pro",
+      "password_hash": "eacd70a5f221928b9c30e6b1217e9e14:e497ff6ca73878192c47d620f0ecb0d342a1d0a56c3e9e58a2cc142166822043ec92cf0f7eef0026d02e3bd863223cbbc5755ede37215d1a75d19635d6f11244"
+    }
+  }
+}
